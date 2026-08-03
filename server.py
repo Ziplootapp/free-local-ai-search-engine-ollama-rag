@@ -19,13 +19,13 @@ from smart_synthesizer import synthesize_response
 PORT = 8050
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 
-# ─── Ollama Auto-Detection ───────────────────────────────────
+# ─── Dynamic Ollama Auto-Detection & Selection ────────────────
 OLLAMA_AVAILABLE = False
 OLLAMA_MODEL = "qwen2.5:7b"
 
 def check_ollama():
-    """Check if Ollama is running locally and has a model available."""
-    global OLLAMA_AVAILABLE
+    """Check if Ollama is running locally and dynamically pick any available model."""
+    global OLLAMA_AVAILABLE, OLLAMA_MODEL
     try:
         req = urllib.request.Request(
             "http://127.0.0.1:11434/api/tags",
@@ -34,31 +34,32 @@ def check_ollama():
         with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read().decode('utf-8'))
             models = [m.get('name', '') for m in data.get('models', [])]
-            if any(OLLAMA_MODEL.split(':')[0] in m for m in models):
+            if models:
                 OLLAMA_AVAILABLE = True
-                print(f"  [OLLAMA] Detected! Using {OLLAMA_MODEL} for enhanced answers.")
-            elif models:
-                OLLAMA_AVAILABLE = True
-                print(f"  [OLLAMA] Detected with models: {', '.join(models[:3])}")
+                # Prioritize qwen / llama / deepseek models if available, or pick the first installed model
+                preferred = [m for m in models if any(k in m.lower() for k in ['qwen', 'llama', 'deepseek', 'mistral', 'gemma'])]
+                OLLAMA_MODEL = preferred[0] if preferred else models[0]
+                print(f"  [OLLAMA] Active & Connected! Using model: '{OLLAMA_MODEL}'")
             else:
-                print("  [OLLAMA] Running but no models found. Run: ollama pull qwen2.5:7b")
+                print("  [OLLAMA] Service active on port 11434 (No models pulled yet).")
+                print("  [INFO] Tip: Run 'ollama pull qwen2.5:1.5b' to enable LLM Neural RAG.")
     except Exception:
         print("  [OLLAMA] Not running - using ZipLoot Smart Synthesizer.")
 
 def ollama_generate(query, search_results):
     """Generate AI answer using local Ollama LLM."""
     sources_text = ""
-    for idx, r in enumerate(search_results[:3], 1):
+    for idx, r in enumerate(search_results[:4], 1):
         sources_text += f"Source [{idx}]: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}\n\n"
 
     prompt = f"""You are ZipLoot Universal AI Engine (Grounded RAG Engine).
-Synthesize a concise, direct Markdown response for: "{query}"
+Synthesize a precise, direct, accurate answer for: "{query}"
 
-Web Data:
+Verified Web Data:
 {sources_text}
 
 Rules:
-1. State the exact main answer immediately.
+1. State the exact main answer immediately (for math/quiz questions, solve carefully and state the exact correct option letter and value).
 2. Keep response concise and accurate.
 3. Include source links.
 
@@ -70,7 +71,7 @@ Answer:"""
         "stream": False,
         "options": {
             "temperature": 0.1,
-            "num_predict": 140,
+            "num_predict": 200,
             "num_thread": 8
         }
     }).encode('utf-8')
@@ -124,7 +125,7 @@ class ZipLootServer(BaseHTTPRequestHandler):
                 payload = {
                     "query": query,
                     "status": "success",
-                    "engine": "ollama-rag" if OLLAMA_AVAILABLE and ai_answer else "smart-synthesizer",
+                    "engine": f"ollama-rag ({OLLAMA_MODEL})" if OLLAMA_AVAILABLE and ai_answer else "smart-synthesizer",
                     "sources": search_results,
                     "answer": ai_answer
                 }
@@ -179,7 +180,7 @@ def run_server():
     print("========================================================")
     print("")
 
-    # Auto-detect Ollama
+    # Dynamic Auto-Detect Ollama Model
     check_ollama()
     print("")
 

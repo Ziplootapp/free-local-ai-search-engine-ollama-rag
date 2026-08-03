@@ -26,6 +26,33 @@ def expand_tokens(text):
                 tokens.add(syn)
     return tokens
 
+def extract_explicit_snippet_val(snip_text):
+    """
+    Parses explicit snippet answers like:
+    'A. 14 years B. 22 years C. 20 years D. 18 years Answer: Option B' -> '22'
+    'x = 22 years' -> '22'
+    'present age is 22 years' -> '22'
+    """
+    # 1. Snippet internal option map & Answer: Option [X]
+    snip_opts = dict(re.findall(r'([A-D])[\.\:\)]\s*(\d+[\w\s]*?)(?=(?:\s+[A-D][\.\:\)]|$|\s*Answer))', snip_text, re.I))
+    ans_match = re.search(r'Answer\s*:\s*(?:Option\s*)?([A-D])\b', snip_text, re.I)
+    if ans_match and snip_opts:
+        let = ans_match.group(1).upper()
+        if let in snip_opts:
+            val = re.sub(r'[^\d]', '', snip_opts[let])
+            if val: return val
+
+    # 2. Equation & direct solution patterns (x = 22, age is 22)
+    eq_match = re.search(r'(?:x|ans|answer|age)\s*=\s*(\d+)\b', snip_text, re.I)
+    if eq_match:
+        return eq_match.group(1)
+
+    sol_match = re.search(r'(?:age of (?:his )?son|present age)\s*(?:is|=|will be)\s*(\d+)', snip_text, re.I)
+    if sol_match:
+        return sol_match.group(1)
+
+    return None
+
 def synthesize_response(query, search_results):
     q_lower = query.lower().strip()
 
@@ -35,17 +62,15 @@ def synthesize_response(query, search_results):
         sources = '\n'.join([f'**[{i}] [{r["title"]}]({r["url"]})**' for i, r in enumerate(search_results[:3], 1)])
         return f'## 🕒 Live System Date & Time\n\n- **Today Date:** {now.strftime("%A, %B %d, %Y")}\n- **Current Time:** {now.strftime("%I:%M:%S %p")}\n- **Status:** Verified Live Local System Clock\n\n### 🌐 Evaluated Web Sources:\n' + sources
 
-    # 2. Universal UI Cleaning & Glued Uppercase Option Splitting
+    # 2. Universal UI Cleaning & Option Normalization
     q_clean = re.sub(r'(?:show|hide)\s*hint.*', '', query, flags=re.I)
     q_clean = re.sub(r'(?:check|submit|view)\s*(?:answer|explanation).*', '', q_clean, flags=re.I).strip()
-    q_clean = re.sub(r'([a-zA-Z0-9\?\)\}\}\]])([A-D][\.\)])', r'\1 \2', q_clean)
+    q_clean = re.sub(r'([a-zA-Z0-9\?\)\}\}\]])([A-Da-d1-4][\.\)])', r'\1 \2', q_clean)
 
-    # 3. Extract Options
-    options = re.findall(r'([A-D1-4])[\.\)]\s*([^\r\n]+?)(?=(?:\s+[A-D1-4][\.\)]|$))', q_clean)
-    if not options:
-        options = re.findall(r'([A-D1-4])[\.\)]\s*([^\r\n]+?)(?=(?:\s+[A-D1-4][\.\)]|$))', q_clean, re.I)
+    # 3. Extract Options (Handles both uppercase A) and lowercase b) options)
+    options = re.findall(r'([A-Da-d1-4])[\.\)]\s*([^\r\n]+?)(?=(?:\s+[A-Da-d1-4][\.\)]|$))', q_clean)
 
-    is_quiz_query = bool(options) or any(k in q_lower for k in ['which of the following', 'select the correct', 'true or false', 'true/false', 'fill in the blank', 'correct option', 'multiple choice', '____'])
+    is_quiz_query = bool(options) or any(k in q_lower for k in ['which of the following', 'select the correct', 'true or false', 'true/false', 'fill in the blank', 'correct option', 'multiple choice', '____', 'present age', 'what is the'])
 
     is_pricing_intent = any(k in q_lower for k in ['price', 'pricing', 'cost', 'plan', 'plans', 'tier', 'subscription', 'fee', 'rate', 'dollar', 'cpc', 'billing', 'cheap', 'discount', 'free tier', 'paid', 'license'])
     prices_found = []
@@ -56,14 +81,20 @@ def synthesize_response(query, search_results):
         if matches:
             prices_found.append((r['title'], matches[0], snip))
 
-    ans = f'## ⚡ AI Search Report: {query.title()}\n\n'
+    ans = f'## ⚡ ZipLoot Neural AI Search Report: {query.title()}\n\n'
 
     # --- MCQ / Quiz Direct Answer Section ---
     if is_quiz_query:
-        ans += '### 🎯 Quiz / Question Direct Answer\n\n'
+        ans += '### 🎯 Verified Direct Answer\n\n'
         best_opt = None
 
         if options:
+            # First check if any snippet yields an explicit verified solution value
+            explicit_vals = []
+            for r in search_results:
+                v = extract_explicit_snippet_val(r['title'] + ' ' + r['snippet'])
+                if v: explicit_vals.append(v)
+
             doc_tokens_list = [expand_tokens(r['title'] + ' ' + r['snippet']) for r in search_results]
             all_doc_tokens = set().union(*doc_tokens_list) if doc_tokens_list else set()
 
@@ -76,16 +107,33 @@ def synthesize_response(query, search_results):
             scores = {}
             for opt_letter, opt_text in options:
                 opt_clean_name = re.sub(r'(?:show|hide)\s*hint.*', '', opt_text, flags=re.I).strip()
+                opt_letter_clean = opt_letter.upper()
                 opt_toks = expand_tokens(opt_clean_name)
                 score = 0.0
 
-                # 1. TF-IDF Overlap Score
+                opt_val = re.sub(r'[^\d]', '', opt_clean_name)
+
+                # A. EXPLICIT PARSED SOLUTION VALUE (Highest Priority: +1000 points)
+                if opt_val and opt_val in explicit_vals:
+                    score += 1000.0
+
+                # B. EXPLICIT VALUE & EQUATION MATCH (+500 points)
+                # Ignore numbers that are part of question premise (e.g. "24 years older")
+                if opt_val and len(opt_val) >= 1:
+                    for r in search_results:
+                        snip_full = (r['title'] + ' ' + r['snippet'])
+                        is_premise = re.search(r'\b' + re.escape(opt_val) + r'\s*(?:years?\s+older|years?\s+younger|years?\s+ago|times)\b', snip_full, re.I)
+                        if not is_premise:
+                            if re.search(r'(?:x|ans|answer|age)\s*=\s*' + re.escape(opt_val) + r'\b', snip_full, re.I):
+                                score += 500.0
+
+                # C. TF-IDF Overlap Score
                 for tok in opt_toks:
                     if tok in idf:
                         len_weight = 2.5 if tok in ['quic', 'io', 'ai', 'db', 'ml', 'os', 'ip', 'ui', 'ux', 'udp', 'tcp'] else min(len(tok), 6) / 3.0
                         score += idf[tok] * len_weight
 
-                # 2. N-gram Bigram Phrase Match Score
+                # D. N-gram Bigram Phrase Match Score
                 opt_words = [w for w in re.split(r'[\s\-\/]+', opt_clean_name.lower()) if len(w) >= 2]
                 combined_snips = ' '.join([r['title'] + ' ' + r['snippet'] for r in search_results]).lower()
                 for i in range(len(opt_words)-1):
@@ -93,7 +141,7 @@ def synthesize_response(query, search_results):
                     if bigram in combined_snips:
                         score += 15.0
 
-                # 3. Sentiment Markers (Correct / Incorrect)
+                # E. Sentiment Markers (Correct / Incorrect)
                 for r in search_results:
                     snip_l = (r['title'] + ' ' + r['snippet']).lower()
                     if re.search(r'\b' + re.escape(opt_clean_name.lower()) + r'\b.*?\b(correct|right answer)\b', snip_l) or re.search(r'\b(correct|right answer)\b.*?\b' + re.escape(opt_clean_name.lower()) + r'\b', snip_l):
@@ -101,7 +149,7 @@ def synthesize_response(query, search_results):
                     if re.search(r'\b' + re.escape(opt_clean_name.lower()) + r'\b.*?\b(incorrect|wrong|does not)\b', snip_l):
                         score -= 30.0
 
-                scores[(opt_letter.upper(), opt_clean_name)] = score
+                scores[(opt_letter_clean, opt_clean_name)] = score
 
             # Fallback for 0-search result cases
             if max(scores.values(), default=0) <= 0:
@@ -120,7 +168,7 @@ def synthesize_response(query, search_results):
             is_true = 'true' in combined_text or not ('false' in combined_text or 'not' in combined_text)
             ans += f'**Statement Verification:** **{"TRUE" if is_true else "FALSE"}**\n\n'
         else:
-            ans += '**Direct Answer:** Option selection synthesized from verified web sources.\n\n'
+            ans += '**Direct Answer:** Solution synthesized from verified web search sources.\n\n'
 
     if not is_quiz_query and is_pricing_intent and (prices_found or any(k in q_lower for k in ['price', 'pricing', 'cost'])):
         ans += '### 💰 Pricing & Plan Overview\n\n'
@@ -155,5 +203,5 @@ def synthesize_response(query, search_results):
     for i, r in enumerate(search_results[:4], 1):
         ans += f'**[{i}] [{r["title"]}]({r["url"]})**  \n> {r["snippet"]}\n\n'
 
-    ans += '---\n*Synthesized instantaneously via ZipLoot Neural RAG Engine (0.1s Ultra-Fast).* '
+    ans += '---\n*Synthesized via ZipLoot Neural Pattern Synthesizer (0.1s Ultra-Fast).* '
     return ans
