@@ -58,8 +58,8 @@ Verified Web Context:
 {sources_text}
 
 Rules:
-1. Solve carefully step-by-step (for math/quiz, state the exact correct option letter and value).
-2. Keep response concise, readable, and 100% accurate.
+1. For MCQ/Quiz questions, start immediately on line 1 with: "Correct Option: Option [Letter]. [Text]".
+2. Then provide concise step-by-step reasoning and explanation.
 
 Answer:"""
 
