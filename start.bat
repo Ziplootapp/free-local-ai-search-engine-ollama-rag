@@ -22,7 +22,7 @@ echo  Starting server at http://localhost:8050 ...
 echo  Press Ctrl+C to stop.
 echo.
 
-start /b cmd /c "timeout /t 2 /nobreak >nul & start "" http://localhost:8050"
+start /b cmd /c "ping -n 3 127.0.0.1 >nul & start "" http://localhost:8050"
 
 python server.py
 
