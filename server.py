@@ -31,12 +31,11 @@ def check_ollama():
             "http://127.0.0.1:11434/api/tags",
             headers={'Content-Type': 'application/json'}
         )
-        with urllib.request.urlopen(req, timeout=2) as resp:
+        with urllib.request.urlopen(req, timeout=3) as resp:
             data = json.loads(resp.read().decode('utf-8'))
             models = [m.get('name', '') for m in data.get('models', [])]
             if models:
                 OLLAMA_AVAILABLE = True
-                # Prioritize qwen / llama / deepseek models if available, or pick the first installed model
                 preferred = [m for m in models if any(k in m.lower() for k in ['qwen', 'llama', 'deepseek', 'mistral', 'gemma'])]
                 OLLAMA_MODEL = preferred[0] if preferred else models[0]
                 print(f"  [OLLAMA] Active & Connected! Using model: '{OLLAMA_MODEL}'")
@@ -47,21 +46,20 @@ def check_ollama():
         print("  [OLLAMA] Not running - using ZipLoot Smart Synthesizer.")
 
 def ollama_generate(query, search_results):
-    """Generate AI answer using local Ollama LLM."""
+    """Generate raw AI reasoning using local Ollama LLM with 60s timeout."""
     sources_text = ""
     for idx, r in enumerate(search_results[:4], 1):
         sources_text += f"Source [{idx}]: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}\n\n"
 
     prompt = f"""You are ZipLoot Universal AI Engine (Grounded RAG Engine).
-Synthesize a precise, direct, accurate answer for: "{query}"
+Synthesize a precise, direct, step-by-step accurate solution for: "{query}"
 
-Verified Web Data:
+Verified Web Context:
 {sources_text}
 
 Rules:
-1. State the exact main answer immediately (for math/quiz questions, solve carefully and state the exact correct option letter and value).
-2. Keep response concise and accurate.
-3. Include source links.
+1. Solve carefully step-by-step (for math/quiz, state the exact correct option letter and value).
+2. Keep response concise, readable, and 100% accurate.
 
 Answer:"""
 
@@ -71,7 +69,7 @@ Answer:"""
         "stream": False,
         "options": {
             "temperature": 0.1,
-            "num_predict": 200,
+            "num_predict": 300,
             "num_thread": 8
         }
     }).encode('utf-8')
@@ -82,13 +80,13 @@ Answer:"""
             data=payload,
             headers={'Content-Type': 'application/json'}
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode('utf-8'))
             ai_text = data.get("response", "").strip()
             if ai_text:
-                return ai_text + f"\n\n---\n*Synthesized locally via ZipLoot AI Studio ({OLLAMA_MODEL} Grounded RAG).* "
+                return ai_text
     except Exception as e:
-        print(f"  [OLLAMA] Generation failed, falling back to synthesizer: {e}")
+        print(f"  [OLLAMA] Generation failed or timed out, falling back to synthesizer: {e}")
 
     return None
 
@@ -115,17 +113,23 @@ class ZipLootServer(BaseHTTPRequestHandler):
 
                 search_results = fast_web_search(query)
 
-                # Try Ollama first, fall back to synthesizer
-                ai_answer = None
+                # Try Ollama first for LLM reasoning
+                raw_ollama_ans = None
                 if OLLAMA_AVAILABLE:
-                    ai_answer = ollama_generate(query, search_results)
-                if ai_answer is None:
-                    ai_answer = synthesize_response(query, search_results)
+                    raw_ollama_ans = ollama_generate(query, search_results)
+
+                # Combine Ollama reasoning + ZipLoot signature v7.0 UI structure
+                ai_answer = synthesize_response(
+                    query, 
+                    search_results, 
+                    ollama_answer=raw_ollama_ans, 
+                    model_name=OLLAMA_MODEL if raw_ollama_ans else None
+                )
 
                 payload = {
                     "query": query,
                     "status": "success",
-                    "engine": f"ollama-rag ({OLLAMA_MODEL})" if OLLAMA_AVAILABLE and ai_answer else "smart-synthesizer",
+                    "engine": f"ollama-rag ({OLLAMA_MODEL})" if raw_ollama_ans else "smart-synthesizer",
                     "sources": search_results,
                     "answer": ai_answer
                 }
