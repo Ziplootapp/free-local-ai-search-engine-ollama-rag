@@ -31,15 +31,19 @@ def clean_latex(text):
     if not text: return ""
     text = re.sub(r'\\\(|\\\)', '', text)
     text = re.sub(r'\\\[|\\\]', '', text)
+    text = re.sub(r'The correct answer is\s+[A-D]\)\s*\d+.*$', '', text, flags=re.I | re.M)
     return text.strip()
 
 def extract_explicit_snippet_val(snip_text):
     """
     Parses explicit snippet answers like:
     'A. 14 years B. 22 years C. 20 years D. 18 years Answer: Option B' -> '22'
-    'x = 22 years' -> '22'
+    'answer is 9' -> '9'
+    'result is 9' -> '9'
+    'x = 22' -> '22'
     '1.00c' -> '1.00c'
     """
+    # 1. Snippet internal option map & Answer: Option [X]
     snip_opts = dict(re.findall(r'([A-D])[\.\:\)]\s*(\d+[\w\s]*?)(?=(?:\s+[A-D][\.\:\)]|$|\s*Answer))', snip_text, re.I))
     ans_match = re.search(r'Answer\s*:\s*(?:Option\s*)?([A-D])\b', snip_text, re.I)
     if ans_match and snip_opts:
@@ -48,9 +52,14 @@ def extract_explicit_snippet_val(snip_text):
             val = re.sub(r'[^\d.]', '', snip_opts[let])
             if val: return val
 
+    # 2. Match "answer is 9", "correct answer is 9", "result is 9", "value is 9", "ans = 9"
+    sol_match = re.search(r'(?:answer|result|solution|value|speed|age)\s*(?:is|=|:|\b(?:is|equals))\s*(\d+(?:\.\d+)?(?:\s*c)?)\b', snip_text, re.I)
+    if sol_match:
+        return sol_match.group(1).strip()
+
     eq_match = re.search(r'(?:x|ans|answer|speed|age)\s*=\s*(\d+(?:\.\d+)?(?:\s*c)?)\b', snip_text, re.I)
     if eq_match:
-        return eq_match.group(1)
+        return eq_match.group(1).strip()
 
     return None
 
@@ -64,9 +73,21 @@ def extract_best_option(query, search_results, ollama_answer=None):
     if not options:
         return None
 
-    # Check if Ollama explicitly specified an option in its answer
+    # Get numbers present inside the question premise (e.g. 6, 2, 1 in "6 ÷ 2(1 + 2)") to avoid matching question tokens
+    q_premise_numbers = set(re.findall(r'\b\d+(?:\.\d+)?\b', query.split('?')[0] if '?' in query else query))
+
+    # 1. Check if Ollama explicitly calculated a final value or specified an option letter
     if ollama_answer:
         text_l = ollama_answer.lower()
+
+        # Check calculated final numerical value from Ollama (e.g. "value is 9", "result is 9", "is 9")
+        calc_matches = re.findall(r'(?:answer|value|result|is|equals)\s*(?:is|=|:)?\s*\*?\*?(\d+(?:\.\d+)?)\*?\*?\b', text_l)
+        if calc_matches:
+            for calc_val in reversed(calc_matches):
+                for opt_letter, opt_text in options:
+                    opt_val = re.sub(r'[^\d.]', '', opt_text).strip()
+                    if opt_val and opt_val == calc_val:
+                        return (opt_letter.upper(), opt_text.strip())
 
         # Check direct "Correct Option is: Option [X]" or "Option [X] is correct"
         direct_match = re.search(r'(?:correct|right)\s*option\s*(?:is\s*)?[:\.\s]*([A-D])\b', text_l, re.I)
@@ -83,7 +104,7 @@ def extract_best_option(query, search_results, ollama_answer=None):
             if len(opt_clean) >= 2 and re.search(r'\b' + re.escape(opt_clean) + r'\b', text_l):
                 return (opt_letter.upper(), opt_text.strip())
 
-    # Fallback to pattern matcher scoring
+    # 2. Fallback to pattern matcher scoring
     explicit_vals = []
     for r in search_results:
         v = extract_explicit_snippet_val(r['title'] + ' ' + r['snippet'])
@@ -106,28 +127,35 @@ def extract_best_option(query, search_results, ollama_answer=None):
         score = 0.0
 
         opt_val = re.sub(r'[^\d.]', '', opt_clean_name)
-        if opt_val and opt_val in explicit_vals:
-            score += 1000.0
+        is_pure_number = bool(re.match(r'^\d+(?:\.\d+)?$', opt_clean_name.strip()))
 
-        if opt_val and len(opt_val) >= 1:
-            for r in search_results:
-                snip_full = (r['title'] + ' ' + r['snippet'])
-                is_premise = re.search(r'\b' + re.escape(opt_val) + r'\s*(?:years?\s+older|years?\s+younger|years?\s+ago|times|%)\b', snip_full, re.I)
-                if not is_premise:
-                    if re.search(r'(?:x|ans|answer|age|speed)\s*=\s*' + re.escape(opt_val) + r'\b', snip_full, re.I):
-                        score += 500.0
+        # If option is a pure number, only match verified solution values
+        if is_pure_number:
+            if opt_val and opt_val in explicit_vals:
+                score += 1000.0
+        else:
+            if opt_val and opt_val in explicit_vals:
+                score += 1000.0
 
-        for tok in opt_toks:
-            if tok in idf:
-                len_weight = 2.5 if tok in ['quic', 'io', 'ai', 'db', 'ml', 'os', 'ip', 'ui', 'ux', 'udp', 'tcp', '1.00c', 'c'] else min(len(tok), 6) / 3.0
-                score += idf[tok] * len_weight
+            if opt_val and len(opt_val) >= 1 and opt_val not in q_premise_numbers:
+                for r in search_results:
+                    snip_full = (r['title'] + ' ' + r['snippet'])
+                    is_premise = re.search(r'\b' + re.escape(opt_val) + r'\s*(?:years?\s+older|years?\s+younger|years?\s+ago|times|%)\b', snip_full, re.I)
+                    if not is_premise:
+                        if re.search(r'(?:x|ans|answer|age|speed)\s*=\s*' + re.escape(opt_val) + r'\b', snip_full, re.I):
+                            score += 500.0
 
-        opt_words = [w for w in re.split(r'[\s\-\/]+', opt_clean_name.lower()) if len(w) >= 2]
-        combined_snips = ' '.join([r['title'] + ' ' + r['snippet'] for r in search_results]).lower()
-        for i in range(len(opt_words)-1):
-            bigram = f"{opt_words[i]} {opt_words[i+1]}"
-            if bigram in combined_snips:
-                score += 15.0
+            for tok in opt_toks:
+                if tok in idf:
+                    len_weight = 2.5 if tok in ['quic', 'io', 'ai', 'db', 'ml', 'os', 'ip', 'ui', 'ux', 'udp', 'tcp', '1.00c', 'c'] else min(len(tok), 6) / 3.0
+                    score += idf[tok] * len_weight
+
+            opt_words = [w for w in re.split(r'[\s\-\/]+', opt_clean_name.lower()) if len(w) >= 2]
+            combined_snips = ' '.join([r['title'] + ' ' + r['snippet'] for r in search_results]).lower()
+            for i in range(len(opt_words)-1):
+                bigram = f"{opt_words[i]} {opt_words[i+1]}"
+                if bigram in combined_snips:
+                    score += 15.0
 
         scores[(opt_letter_clean, opt_clean_name)] = score
 
