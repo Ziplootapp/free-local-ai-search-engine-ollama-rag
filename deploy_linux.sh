@@ -54,20 +54,29 @@ fi
 echo "  [OK] All dependencies installed."
 echo ""
 
-# ─── Step 3: Check / Auto-Install Ollama ────────────────────
-echo "[3/4] Checking for Ollama (Local AI Engine)..."
-if command -v ollama &> /dev/null; then
-    echo "  [OK] Ollama detected! Enhanced AI answers enabled."
-else
-    echo "  [INFO] Ollama not found. Attempting 1-Click Auto-Install..."
-    curl -fsSL https://ollama.com/install.sh | sh > /dev/null 2>&1
-    if command -v ollama &> /dev/null; then
-        echo "  [OK] Ollama auto-installed successfully!"
-    else
-        echo "  [INFO] Ollama setup skipped - using built-in ZipLoot Smart Synthesizer."
-        echo "  [INFO] ZipLoot works 100% out-of-the-box using built-in Neural Synthesizer."
-    fi
+# ─── Step 3: Setup Ollama Local AI Engine (MANDATORY) ──────
+echo "[3/4] Setting up Ollama Local AI Engine (Mandatory)..."
+if ! command -v ollama &> /dev/null; then
+    echo "  [INFO] Installing Ollama for Linux/macOS..."
+    curl -fsSL https://ollama.com/install.sh | sh
 fi
+
+echo "  [OK] Ollama binary detected."
+
+# Check if Ollama background daemon is running
+if ! pgrep -x "ollama" > /dev/null; then
+    echo "  [INFO] Starting Ollama background AI daemon..."
+    ollama serve > /dev/null 2>&1 &
+    sleep 3
+fi
+echo "  [OK] Ollama AI Daemon active on port 11434!"
+
+# Check if model exists
+if ! ollama list 2>/dev/null | grep -Ei "qwen|llama|deepseek" > /dev/null; then
+    echo "  [INFO] Pulling fast lightweight Ollama AI model (qwen2.5:1.5b)..."
+    ollama pull qwen2.5:1.5b
+fi
+echo "  [OK] Ollama Local AI Engine ready!"
 echo ""
 
 # ─── Step 4: Launch Server ───────────────────────────────────

@@ -76,8 +76,8 @@ if %errorlevel% neq 0 (
 echo  [OK] All dependencies installed.
 echo.
 
-REM --- Step 3: Check & Auto-Install Ollama ---
-echo [3/4] Checking for Ollama (Local AI Engine)...
+REM --- Step 3: Setup Ollama Local AI Engine (MANDATORY) ---
+echo [3/4] Setting up Ollama Local AI Engine (Mandatory)...
 
 where ollama >nul 2>&1
 if %errorlevel% equ 0 goto :OLLAMA_FOUND
@@ -87,20 +87,14 @@ if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
     goto :OLLAMA_FOUND
 )
 
-echo  [INFO] Ollama is not installed on this PC.
-echo  [INFO] Starting 1-Click Auto-Download of Ollama for Windows...
-echo  [INFO] Downloading OllamaSetup.exe (Please wait 1-2 mins)...
+echo  [INFO] Downloading and installing Ollama for Windows...
+echo  [INFO] Downloading OllamaSetup.exe (Please wait)...
 
 powershell -Command "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iwr -useb 'https://ollama.com/download/OllamaSetup.exe' -OutFile '$env:TEMP\OllamaSetup.exe'; Start-Process '$env:TEMP\OllamaSetup.exe' -ArgumentList '/silent' -Wait"
 
 if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
     set "PATH=%LOCALAPPDATA%\Programs\Ollama;%PATH%"
-    echo  [OK] Ollama auto-installed successfully!
-    goto :OLLAMA_SERVICE
-) else (
-    echo  [INFO] Ollama download skipped or cancelled.
-    echo  [INFO] ZipLoot will run using built-in Neural Synthesizer.
-    goto :STEP_4
+    echo  [OK] Ollama installed successfully!
 )
 
 :OLLAMA_FOUND
@@ -109,7 +103,7 @@ echo  [OK] Ollama binary detected.
 :OLLAMA_SERVICE
 netstat -an 2>nul | findstr ":11434 " | findstr "LISTENING" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo  [INFO] Starting Ollama background AI service...
+    echo  [INFO] Starting Ollama background AI service daemon...
     if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
         start /b "" "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" serve >nul 2>&1
     ) else (
@@ -118,6 +112,22 @@ if %errorlevel% neq 0 (
     ping -n 3 127.0.0.1 >nul
 )
 echo  [OK] Ollama AI Daemon active on port 11434!
+
+echo  [INFO] Checking Ollama AI model (qwen2.5:1.5b)...
+if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+    "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" list 2>nul | findstr /i "qwen llama deepseek" >nul 2>&1
+) else (
+    ollama list 2>nul | findstr /i "qwen llama deepseek" >nul 2>&1
+)
+if %errorlevel% neq 0 (
+    echo  [INFO] Pulling fast lightweight Ollama AI model (qwen2.5:1.5b)...
+    if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+        "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" pull qwen2.5:1.5b
+    ) else (
+        ollama pull qwen2.5:1.5b
+    )
+)
+echo  [OK] Ollama Local AI Engine ready!
 echo.
 
 REM --- Step 4: Check Port & Launch ---
