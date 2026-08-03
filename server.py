@@ -24,7 +24,7 @@ OLLAMA_AVAILABLE = False
 OLLAMA_MODEL = "qwen2.5:7b"
 
 def check_ollama():
-    """Check if Ollama is running locally and dynamically pick any available model."""
+    """Check if Ollama is running locally and dynamically pick the largest/best available model."""
     global OLLAMA_AVAILABLE, OLLAMA_MODEL
     try:
         req = urllib.request.Request(
@@ -37,11 +37,21 @@ def check_ollama():
             if models:
                 OLLAMA_AVAILABLE = True
                 preferred = [m for m in models if any(k in m.lower() for k in ['qwen', 'llama', 'deepseek', 'mistral', 'gemma'])]
-                OLLAMA_MODEL = preferred[0] if preferred else models[0]
-                print(f"  [OLLAMA] Active & Connected! Using model: '{OLLAMA_MODEL}'")
+                if preferred:
+                    # Sort so larger models (7b, 8b, 14b, 3b) are selected BEFORE 0.5b
+                    preferred.sort(key=lambda m: (
+                        '0.5b' in m.lower(),
+                        '1.5b' in m.lower(),
+                        '3b' in m.lower(),
+                        not any(k in m.lower() for k in ['7b', '8b', '14b', '32b', '70b', 'latest'])
+                    ))
+                    OLLAMA_MODEL = preferred[0]
+                else:
+                    OLLAMA_MODEL = models[0]
+                print(f"  [OLLAMA] Active & Connected! Selected model: '{OLLAMA_MODEL}'")
             else:
                 print("  [OLLAMA] Service active on port 11434 (No models pulled yet).")
-                print("  [INFO] Tip: Run 'ollama pull qwen2.5:1.5b' to enable LLM Neural RAG.")
+                print("  [INFO] Tip: Run 'ollama pull qwen2.5:7b' to enable LLM Neural RAG.")
     except Exception:
         print("  [OLLAMA] Not running - using ZipLoot Smart Synthesizer.")
 
@@ -58,8 +68,8 @@ Verified Web Context:
 {sources_text}
 
 Rules:
-1. For MCQ/Quiz questions, start immediately on line 1 with: "Correct Option: Option [Letter]. [Text]".
-2. Then provide concise step-by-step reasoning and explanation.
+1. For MCQ/Quiz questions, state the exact correct option letter and text immediately.
+2. Provide concise step-by-step reasoning and explanation.
 
 Answer:"""
 
@@ -69,7 +79,7 @@ Answer:"""
         "stream": False,
         "options": {
             "temperature": 0.1,
-            "num_predict": 300,
+            "num_predict": 350,
             "num_thread": 8
         }
     }).encode('utf-8')
