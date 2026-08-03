@@ -67,9 +67,9 @@ def parse_options(query):
     else:
         opt_section = q_clean
 
-    options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', opt_section, re.I)
+    options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.\~]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', opt_section, re.I)
     if not options and '?' in q_clean:
-        options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', q_clean, re.I)
+        options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.\~]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', q_clean, re.I)
 
     return [(let.upper(), text.strip()) for let, text in options]
 
@@ -93,8 +93,8 @@ def extract_best_option(query, search_results, ollama_answer=None):
                 if opt_letter.upper() == matched_let:
                     return (opt_letter.upper(), opt_text.strip())
 
-        # B) Match direct "Correct Option: B" or "Option B is correct"
-        direct_match = re.search(r'(?:correct|right)\s*(?:option|answer)\s*(?:is|=|:)?\s*\*?\*?\(?([A-D])[\)\.]?\b', text_l, re.I)
+        # B) Match direct "Correct Option: B" or "Option B is correct" or "Answer: C)"
+        direct_match = re.search(r'(?:correct|right)?\s*(?:option|answer)\s*(?:is|=|:)?\s*\*?\*?\(?([A-D])[\)\.]?\b', text_l, re.I)
         if direct_match:
             matched_let = direct_match.group(1).upper()
             for opt_letter, opt_text in options:
@@ -177,10 +177,11 @@ def synthesize_response(query, search_results, ollama_answer=None, model_name=No
     elif not best_opt:
         ans += '**Direct Answer:** Solution synthesized from verified web search sources.\n\n'
 
-    # --- Convert all inline [1], [2], [3], [4] citation tags into direct clickable links ---
+    # --- Convert all inline [1], [2], [3], [4] and Source [1] citation tags into direct clickable links ---
     for i, r in enumerate(search_results[:4], 1):
         url = r.get('url', '#')
-        ans = re.sub(r'\[(' + str(i) + r')\](?!\()', f'[[{i}]]({url})', ans)
+        ans = re.sub(r'(?:Source\s*)?\[(' + str(i) + r')\](?!\()', f'[[{i}]]({url})', ans, flags=re.I)
+        ans = re.sub(r'\bSource\s+(' + str(i) + r')\b', f'[[{i}]]({url})', ans, flags=re.I)
 
     # --- 3. Key Findings & Overview Section ---
     ans += '### 💡 Key Findings & Overview\n\n'
