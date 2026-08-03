@@ -70,14 +70,27 @@ if %errorlevel% neq 0 (
 echo  [OK] All dependencies installed.
 echo.
 
-:: ─── Step 3: Check Ollama (Optional) ────────────────────────
-echo [3/4] Checking for Ollama (optional local LLM)...
+:: ─── Step 3: Check / Auto-Install Ollama ─────────────────────
+echo [3/4] Checking for Ollama (Local AI Engine)...
 where ollama >nul 2>&1
 if %errorlevel% equ 0 (
     echo  [OK] Ollama detected! Enhanced AI answers enabled.
 ) else (
-    echo  [INFO] Ollama not found - using built-in ZipLoot Smart Synthesizer.
-    echo  [INFO] This is 100%% fine! ZipLoot works out-of-the-box without Ollama.
+    if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+        set "PATH=%LOCALAPPDATA%\Programs\Ollama;%PATH%"
+        echo  [OK] Ollama detected at LocalAppData!
+    ) else (
+        echo  [INFO] Ollama not found. Starting 1-Click Auto-Installer...
+        echo  [INFO] Downloading Ollama for Windows...
+        powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://ollama.com/download/OllamaSetup.exe' -OutFile '$env:TEMP\OllamaSetup.exe'; Start-Process '$env:TEMP\OllamaSetup.exe' -ArgumentList '/silent' -Wait" >nul 2>&1
+        if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+            set "PATH=%LOCALAPPDATA%\Programs\Ollama;%PATH%"
+            echo  [OK] Ollama auto-installed successfully!
+        ) else (
+            echo  [INFO] Ollama installation skipped - using built-in ZipLoot Smart Synthesizer.
+            echo  [INFO] ZipLoot works 100%% out-of-the-box using built-in Neural Synthesizer.
+        )
+    )
 )
 echo.
 

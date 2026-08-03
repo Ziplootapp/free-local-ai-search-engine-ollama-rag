@@ -54,12 +54,19 @@ fi
 echo "  [OK] All dependencies installed."
 echo ""
 
-# ─── Step 3: Check Ollama (Optional) ────────────────────────
-echo "[3/4] Checking for Ollama (optional local LLM)..."
+# ─── Step 3: Check / Auto-Install Ollama ────────────────────
+echo "[3/4] Checking for Ollama (Local AI Engine)..."
 if command -v ollama &> /dev/null; then
     echo "  [OK] Ollama detected! Enhanced AI answers enabled."
 else
-    echo "  [INFO] Ollama not found - using ZipLoot Smart Synthesizer."
+    echo "  [INFO] Ollama not found. Attempting 1-Click Auto-Install..."
+    curl -fsSL https://ollama.com/install.sh | sh > /dev/null 2>&1
+    if command -v ollama &> /dev/null; then
+        echo "  [OK] Ollama auto-installed successfully!"
+    else
+        echo "  [INFO] Ollama setup skipped - using built-in ZipLoot Smart Synthesizer."
+        echo "  [INFO] ZipLoot works 100% out-of-the-box using built-in Neural Synthesizer."
+    fi
 fi
 echo ""
 
