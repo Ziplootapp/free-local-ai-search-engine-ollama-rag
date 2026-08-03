@@ -40,7 +40,7 @@ def extract_explicit_snippet_val(snip_text):
     Parses explicit snippet answers like:
     'A. 14 years B. 22 years C. 20 years D. 18 years Answer: Option B' -> '22'
     'answer is 25' -> '25'
-    '312211' -> '312211'
+    'becomes 0.30000000000000004' -> '0.30000000000000004'
     """
     snip_opts = dict(re.findall(r'([A-D])[\.\:\)]\s*(\$?\d+[\w\s\.]*?)(?=(?:\s+[A-D][\.\:\)]|$|\s*Answer))', snip_text, re.I))
     ans_match = re.search(r'Answer\s*:\s*(?:Option\s*)?([A-D])\b', snip_text, re.I)
@@ -50,7 +50,13 @@ def extract_explicit_snippet_val(snip_text):
             val = re.sub(r'[^\d.]', '', snip_opts[let])
             if val: return val
 
-    sol_match = re.search(r'(?:original price|answer|result|solution|value|speed|age)\s*(?:was|is|=|:|\b(?:is|equals|costs))\s*\$?(\d+(?:\.\d+)?)\b', snip_text, re.I)
+    # Match floating point precision values in snippet (e.g. 0.30000000000000004)
+    float_match = re.search(r'\b(0\.\d{4,})\b', snip_text)
+    if float_match:
+        return float_match.group(1).strip()
+
+    # Match verbs like becomes, equals, gives, returns, is, costs
+    sol_match = re.search(r'(?:becomes|equals|gives|returns|original price|answer|result|solution|value|speed|age)\s*(?:was|is|=|:|\b(?:is|equals|costs))\s*\$?(\d+(?:\.\d+)?)\b', snip_text, re.I)
     if sol_match:
         return sol_match.group(1).strip()
 
@@ -135,7 +141,7 @@ def extract_best_option(query, search_results, ollama_answer=None):
         opt_val = re.sub(r'[^\d.]', '', opt_clean_name)
         is_pure_number = bool(re.match(r'^\$?\d+(?:\.\d+)?$', opt_clean_name.strip()))
 
-        if opt_val and (opt_val in explicit_vals or any(float(opt_val) == float(ev) for ev in explicit_vals if ev.replace('.', '').isdigit())):
+        if opt_val and (opt_val in explicit_vals or any(opt_val == ev for ev in explicit_vals)):
             score += 1000.0
 
         if not is_pure_number:
@@ -156,7 +162,7 @@ def synthesize_response(query, search_results, ollama_answer=None, model_name=No
     # 1. Date & Time Intent
     if any(k in q_lower for k in ['date', 'time', 'clock', 'today date']):
         now = datetime.datetime.now()
-        sources = '\n'.join([f'**[[{i}]] [{r["title"]}]({r["url"]})**' for i, r in enumerate(search_results[:3], 1)])
+        sources = '\n'.join([f'**[{i}]({r["url"]}) [{r["title"]}]({r["url"]})**' for i, r in enumerate(search_results[:3], 1)])
         return f'## 🕒 Live System Date & Time\n\n- **Today Date:** {now.strftime("%A, %B %d, %Y")}\n- **Current Time:** {now.strftime("%I:%M:%S %p")}\n- **Status:** Verified Live Local System Clock\n\n### 🌐 Evaluated Web Sources:\n' + sources
 
     ans = f'## ⚡ ZipLoot Neural AI Search Report: {query.title()}\n\n'
@@ -180,8 +186,8 @@ def synthesize_response(query, search_results, ollama_answer=None, model_name=No
     # --- Convert all inline [1], [2], [3], [4] and Source [1] citation tags into direct clickable links ---
     for i, r in enumerate(search_results[:4], 1):
         url = r.get('url', '#')
-        ans = re.sub(r'(?:Source\s*)?\[(' + str(i) + r')\](?!\()', f'[[{i}]]({url})', ans, flags=re.I)
-        ans = re.sub(r'\bSource\s+(' + str(i) + r')\b', f'[[{i}]]({url})', ans, flags=re.I)
+        ans = re.sub(r'(?:Source\s*)?\[(' + str(i) + r')\](?!\()', f'[{i}]({url})', ans, flags=re.I)
+        ans = re.sub(r'\bSource\s+(' + str(i) + r')\b', f'[{i}]({url})', ans, flags=re.I)
 
     # --- 3. Key Findings & Overview Section ---
     ans += '### 💡 Key Findings & Overview\n\n'
@@ -193,7 +199,7 @@ def synthesize_response(query, search_results, ollama_answer=None, model_name=No
     # --- 4. Verified Web Sources Section ---
     ans += '\n### 🌐 Verified Web Sources\n\n'
     for i, r in enumerate(search_results[:4], 1):
-        ans += f'**[[{i}]] [{r["title"]}]({r["url"]})**  \n> {r["snippet"]}\n\n'
+        ans += f'**[{i}]({r["url"]}) [{r["title"]}]({r["url"]})**  \n> {r["snippet"]}\n\n'
 
     # --- Footer ---
     if ollama_answer and model_name:
