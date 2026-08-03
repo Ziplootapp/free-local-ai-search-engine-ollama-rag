@@ -8,7 +8,7 @@ echo   Official Web App: https://ziploot.app
 echo ========================================================
 echo.
 
-:: ─── Step 0: Check Python ───────────────────────────────────
+REM --- Step 0: Check Python ---
 echo [0/4] Checking Python installation...
 python --version >nul 2>&1
 if %errorlevel% neq 0 goto :MISSING_PYTHON
@@ -38,7 +38,7 @@ echo.
 pause
 exit /b 1
 
-:: ─── Step 1: Create Virtual Environment ─────────────────────
+REM --- Step 1: Create Virtual Environment ---
 :STEP_1
 echo [1/4] Setting up Python virtual environment...
 if exist "venv\Scripts\activate.bat" goto :VENV_EXISTS
@@ -63,7 +63,7 @@ echo.
 pause
 exit /b 1
 
-:: ─── Step 2: Install Dependencies ───────────────────────────
+REM --- Step 2: Install Dependencies ---
 :STEP_2
 echo [2/4] Installing Python dependencies...
 python -m pip install --upgrade pip >nul 2>&1
@@ -76,7 +76,7 @@ if %errorlevel% neq 0 (
 echo  [OK] All dependencies installed.
 echo.
 
-:: ─── Step 3: Check & Auto-Install Ollama ────────────────────
+REM --- Step 3: Check & Auto-Install Ollama ---
 echo [3/4] Checking for Ollama (Local AI Engine)...
 
 where ollama >nul 2>&1
@@ -110,13 +110,17 @@ echo  [OK] Ollama binary detected.
 netstat -an 2>nul | findstr ":11434 " | findstr "LISTENING" >nul 2>&1
 if %errorlevel% neq 0 (
     echo  [INFO] Starting Ollama background AI service...
-    start /b "" ollama serve >nul 2>&1
+    if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+        start /b "" "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" serve >nul 2>&1
+    ) else (
+        start /b "" ollama serve >nul 2>&1
+    )
     ping -n 3 127.0.0.1 >nul
 )
 echo  [OK] Ollama AI Daemon active on port 11434!
 echo.
 
-:: ─── Step 4: Check Port & Launch ────────────────────────────
+REM --- Step 4: Check Port & Launch ---
 :STEP_4
 echo [4/4] Launching ZipLoot AI Search Studio...
 
