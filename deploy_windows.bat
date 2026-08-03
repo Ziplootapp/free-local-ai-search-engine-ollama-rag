@@ -70,27 +70,47 @@ if %errorlevel% neq 0 (
 echo  [OK] All dependencies installed.
 echo.
 
-:: ─── Step 3: Check / Auto-Install Ollama ─────────────────────
+:: ─── Step 3: Check & Auto-Install / Auto-Start Ollama ────────
 echo [3/4] Checking for Ollama (Local AI Engine)...
+
+set "OLLAMA_EXE="
 where ollama >nul 2>&1
-if %errorlevel% equ 0 (
-    echo  [OK] Ollama detected! Enhanced AI answers enabled.
-) else (
+if %errorlevel% equ 0 set "OLLAMA_EXE=ollama"
+if not defined OLLAMA_EXE (
     if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+        set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
         set "PATH=%LOCALAPPDATA%\Programs\Ollama;%PATH%"
-        echo  [OK] Ollama detected at LocalAppData!
-    ) else (
-        echo  [INFO] Ollama not found. Starting 1-Click Auto-Installer...
-        echo  [INFO] Downloading Ollama for Windows...
-        powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://ollama.com/download/OllamaSetup.exe' -OutFile '$env:TEMP\OllamaSetup.exe'; Start-Process '$env:TEMP\OllamaSetup.exe' -ArgumentList '/silent' -Wait" >nul 2>&1
-        if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
-            set "PATH=%LOCALAPPDATA%\Programs\Ollama;%PATH%"
-            echo  [OK] Ollama auto-installed successfully!
-        ) else (
-            echo  [INFO] Ollama installation skipped - using built-in ZipLoot Smart Synthesizer.
-            echo  [INFO] ZipLoot works 100%% out-of-the-box using built-in Neural Synthesizer.
-        )
     )
+)
+
+if not defined OLLAMA_EXE (
+    echo  [INFO] Ollama is not installed on this PC.
+    echo  [INFO] Starting 1-Click Auto-Download of Ollama for Windows...
+    echo  [INFO] Downloading OllamaSetup.exe (Please wait 1-2 mins)...
+    
+    powershell -Command "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iwr -useb 'https://ollama.com/download/OllamaSetup.exe' -OutFile '$env:TEMP\OllamaSetup.exe'; Start-Process '$env:TEMP\OllamaSetup.exe' -ArgumentList '/silent' -Wait"
+    
+    if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+        set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+        set "PATH=%LOCALAPPDATA%\Programs\Ollama;%PATH%"
+        echo  [OK] Ollama auto-installed successfully!
+    ) else (
+        echo  [INFO] Ollama download skipped or cancelled.
+        echo  [INFO] ZipLoot will run using built-in Neural Synthesizer.
+    )
+) else (
+    echo  [OK] Ollama binary detected.
+)
+
+:: Auto-Start Ollama Background Daemon if needed
+if defined OLLAMA_EXE (
+    netstat -an 2>nul | findstr ":11434 " | findstr "LISTENING" >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo  [INFO] Starting Ollama background AI service...
+        start /b "" "%OLLAMA_EXE%" serve >nul 2>&1
+        timeout /t 3 /nobreak >nul
+    )
+    echo  [OK] Ollama AI Daemon active on port 11434!
 )
 echo.
 
@@ -101,7 +121,7 @@ netstat -an 2>nul | findstr ":8050 " | findstr "LISTENING" >nul 2>&1
 if %errorlevel% equ 0 (
     echo.
     echo  [WARNING] Port 8050 is already in use!
-    echo  Another instance may be running. Close it first if needed.
+    echo  Another ZipLoot instance may be running.
     echo.
 )
 
