@@ -27,10 +27,12 @@ def expand_tokens(text):
     return tokens
 
 def clean_latex(text):
-    """Clean LaTeX math & special formatting for clean markdown rendering."""
+    """Clean LaTeX math & remove duplicate answer prefixes for clean markdown rendering."""
     if not text: return ""
     text = re.sub(r'\\\(|\\\)', '', text)
     text = re.sub(r'\\\[|\\\]', '', text)
+    # Remove leading duplicate "The correct answer is B) $25." lines from Ollama response
+    text = re.sub(r'^(?:The\s+)?correct\s+(?:answer|option)\s*(?:is|=|:)?\s*\(?[A-D][\)\.]?\s*\$?\d+.*?\n+', '', text, flags=re.I)
     text = re.sub(r'The correct answer is\s+[A-D]\)\s*\d+.*$', '', text, flags=re.I | re.M)
     return text.strip()
 
@@ -38,11 +40,9 @@ def extract_explicit_snippet_val(snip_text):
     """
     Parses explicit snippet answers like:
     'A. 14 years B. 22 years C. 20 years D. 18 years Answer: Option B' -> '22'
-    'answer is 9' -> '9'
-    'ball costs 5c' -> '0.05'
-    'x = 22' -> '22'
+    'answer is 25' -> '25'
+    'original price was 25' -> '25'
     """
-    # 1. Snippet internal option map & Answer: Option [X]
     snip_opts = dict(re.findall(r'([A-D])[\.\:\)]\s*(\$?\d+[\w\s\.]*?)(?=(?:\s+[A-D][\.\:\)]|$|\s*Answer))', snip_text, re.I))
     ans_match = re.search(r'Answer\s*:\s*(?:Option\s*)?([A-D])\b', snip_text, re.I)
     if ans_match and snip_opts:
@@ -51,14 +51,7 @@ def extract_explicit_snippet_val(snip_text):
             val = re.sub(r'[^\d.]', '', snip_opts[let])
             if val: return val
 
-    # 2. Special currency & decimal cents matching (e.g. 5c -> 0.05, $0.05 -> 0.05)
-    cent_match = re.search(r'(?:ball|cost|answer|result)\s*(?:is|=|costs)?\s*(\d+)\s*c\b', snip_text, re.I)
-    if cent_match:
-        c_val = int(cent_match.group(1))
-        return f"0.0{c_val}" if c_val < 10 else f"0.{c_val}"
-
-    # 3. Match "answer is 9", "result is $0.05", "value is 9", "ans = 9"
-    sol_match = re.search(r'(?:answer|result|solution|value|speed|age|ball)\s*(?:is|=|:|\b(?:is|equals|costs))\s*\$?(\d+(?:\.\d+)?(?:\s*c)?)\b', snip_text, re.I)
+    sol_match = re.search(r'(?:original price|answer|result|solution|value|speed|age)\s*(?:was|is|=|:|\b(?:is|equals|costs))\s*\$?(\d+(?:\.\d+)?)\b', snip_text, re.I)
     if sol_match:
         return sol_match.group(1).strip()
 
@@ -69,14 +62,12 @@ def parse_options(query):
     q_clean = re.sub(r'(?:show|hide)\s*hint.*', '', query, flags=re.I)
     q_clean = re.sub(r'(?:check|submit|view)\s*(?:answer|explanation).*', '', q_clean, flags=re.I).strip()
     
-    # Isolate options section (usually after '?' or near the end)
     if '?' in q_clean:
         parts = q_clean.split('?', 1)
         opt_section = parts[1]
     else:
         opt_section = q_clean
 
-    # Match A) $0.10 B) $0.05 C) $1.00 D) $0.15 (ensuring option letter is A-D, not preceded by $ or digits)
     options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', opt_section, re.I)
     if not options and '?' in q_clean:
         options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', q_clean, re.I)
@@ -91,29 +82,28 @@ def extract_best_option(query, search_results, ollama_answer=None):
 
     q_premise_numbers = set(re.findall(r'\b\d+(?:\.\d+)?\b', query.split('?')[0] if '?' in query else query))
 
-    # 1. Check if Ollama explicitly calculated a final value or specified an option letter
+    # 1. Check if Ollama explicitly specified an option letter or calculated value
     if ollama_answer:
         text_l = ollama_answer.lower()
 
-        # Check calculated final numerical value from Ollama (e.g. "$0.05", "0.05", "5 cents")
-        calc_matches = re.findall(r'(?:answer|value|result|is|equals|costs)\s*(?:is|=|:)?\s*\*?\*?\$?(\d+(?:\.\d+)?)\*?\*?\b', text_l)
-        if calc_matches:
-            for calc_val in reversed(calc_matches):
-                for opt_letter, opt_text in options:
-                    opt_val = re.sub(r'[^\d.]', '', opt_text).strip()
-                    if opt_val and (opt_val == calc_val or float(opt_val) == float(calc_val)):
-                        return (opt_letter.upper(), opt_text.strip())
-
-        # Check direct "Correct Option is: Option [X]" or "Option [X] is correct"
-        direct_match = re.search(r'(?:correct|right)\s*option\s*(?:is\s*)?[:\.\s]*([A-D])\b', text_l, re.I)
-        if not direct_match:
-            direct_match = re.search(r'option\s*([A-D])\s*(?:is\s*)?(?:correct|right|answer)', text_l, re.I)
-        if direct_match:
-            matched_let = direct_match.group(1).upper()
+        # A) Match direct option letter in Ollama text: "correct answer is B", "Option B", "Answer: B", "B)"
+        letter_match = re.search(r'(?:correct|right|final)?\s*(?:option|answer)\s*(?:is|=|:)?\s*\*?\*?\(?([A-D])[\)\.]?\b', text_l, re.I)
+        if letter_match:
+            matched_let = letter_match.group(1).upper()
             for opt_letter, opt_text in options:
                 if opt_letter.upper() == matched_let:
                     return (opt_letter.upper(), opt_text.strip())
 
+        # B) Check the conclusion sentence at the end of Ollama's answer
+        last_lines = [line for line in text_l.split('\n') if line.strip()]
+        if last_lines:
+            conclusion_text = ' '.join(last_lines[-3:])
+            for opt_letter, opt_text in options:
+                opt_val = re.sub(r'[^\d.]', '', opt_text).strip()
+                if opt_val and opt_val not in q_premise_numbers and re.search(r'\b\$?' + re.escape(opt_val) + r'\b', conclusion_text):
+                    return (opt_letter.upper(), opt_text.strip())
+
+        # C) Match exact option text in Ollama answer
         for opt_letter, opt_text in options:
             opt_clean = re.sub(r'(?:show|hide)\s*hint.*', '', opt_text, flags=re.I).strip().lower()
             if len(opt_clean) >= 2 and re.search(r'\b' + re.escape(opt_clean) + r'\b', text_l):
