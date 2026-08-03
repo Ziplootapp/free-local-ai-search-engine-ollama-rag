@@ -148,8 +148,8 @@ def extract_best_option(query, search_results, ollama_answer=None):
 def synthesize_response(query, search_results, ollama_answer=None, model_name=None):
     q_lower = query.lower().strip()
 
-    # 1. Date & Time Intent
-    if any(k in q_lower for k in ['date', 'time', 'clock', 'today date']):
+    # 1. Date & Time Intent (Exact Word Boundaries to avoid matching "sometimes")
+    if re.search(r'\b(?:what date|current date|today date|current time|what time|local time|system time|live clock)\b', q_lower):
         now = datetime.datetime.now()
         sources = '\n'.join([f'**[{i}]({r["url"]}) [{r["title"]}]({r["url"]})**' for i, r in enumerate(search_results[:3], 1)])
         return f'## 🕒 Live System Date & Time\n\n- **Today Date:** {now.strftime("%A, %B %d, %Y")}\n- **Current Time:** {now.strftime("%I:%M:%S %p")}\n- **Status:** Verified Live Local System Clock\n\n### 🌐 Evaluated Web Sources:\n' + sources

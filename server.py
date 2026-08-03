@@ -54,7 +54,7 @@ def check_ollama():
         OLLAMA_AVAILABLE = False
 
 def ollama_generate(query, search_results):
-    """Generate raw AI reasoning using local Ollama LLM with chain-of-thought rule."""
+    """Generate raw AI reasoning using local Ollama LLM with 600 max tokens to avoid truncation."""
     sources_text = ""
     for idx, r in enumerate(search_results[:4], 1):
         sources_text += f"Source [{idx}]: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}\n\n"
@@ -66,7 +66,7 @@ Verified Web Context:
 {sources_text}
 
 Rules:
-1. First, calculate and reason step-by-step with 100% precision.
+1. Calculate and reason step-by-step with 100% precision.
 2. At the very end of your answer, state the final conclusion clearly: "Therefore, the correct answer is Option [Letter]. [Text]".
 
 Answer:"""
@@ -77,7 +77,7 @@ Answer:"""
         "stream": False,
         "options": {
             "temperature": 0.1,
-            "num_predict": 350,
+            "num_predict": 600,
             "num_thread": 8
         }
     }).encode('utf-8')
