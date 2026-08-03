@@ -43,7 +43,7 @@ def check_ollama():
             else:
                 print("  [OLLAMA] Running but no models found. Run: ollama pull qwen2.5:7b")
     except Exception:
-        print("  [OLLAMA] Not detected. Using built-in Smart Synthesizer.")
+        print("  [OLLAMA] Not running - using ZipLoot Smart Synthesizer.")
 
 def ollama_generate(query, search_results):
     """Generate AI answer using local Ollama LLM."""
@@ -107,7 +107,8 @@ class ZipLootServer(BaseHTTPRequestHandler):
                     return
 
                 try:
-                    print(f"  [SEARCH] Query: {query}")
+                    print(f"  [ZIPLOOT ENGINE] Query: {query}")
+                    sys.stdout.flush()
                 except Exception:
                     pass
 
@@ -135,10 +136,8 @@ class ZipLootServer(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8"))
                 return
 
-            # 2. Static HTML File Serving
+            # 2. Static HTML File Serving (Root /, /index.html, /ai-search)
             file_path = os.path.join(DIR_PATH, "index.html")
-            if parsed.path == "/ai-search":
-                file_path = os.path.join(DIR_PATH, "index.html")
 
             if os.path.exists(file_path) and os.path.isfile(file_path):
                 self.send_response(200)
@@ -151,11 +150,12 @@ class ZipLootServer(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                self.wfile.write(b"404 Not Found")
+                self.wfile.write(b"404 ZipLoot App Page Not Found")
 
         except Exception as err:
             try:
-                print(f"  [ERROR]: {err}")
+                print(f"  [ZIPLOOT ERROR]: {err}")
+                sys.stdout.flush()
             except Exception:
                 pass
             self.send_response(500)
@@ -166,17 +166,17 @@ class ZipLootServer(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(err_payload, ensure_ascii=False).encode("utf-8"))
 
     def log_message(self, format, *args):
-        """Suppress default HTTP request logging for cleaner output."""
+        """Suppress verbose default HTTP logging."""
         pass
 
 
 def run_server():
     print("")
-    print("  ╔══════════════════════════════════════════════════════╗")
-    print("  ║  ZipLoot AI Search Studio v2.0                       ║")
-    print("  ║  Local Server: http://localhost:8050/                 ║")
-    print("  ║  Press Ctrl+C to stop.                               ║")
-    print("  ╚══════════════════════════════════════════════════════╝")
+    print("========================================================")
+    print("  ZipLoot AI Search Studio v2.0 - Server Daemon")
+    print("  Local Web App: http://localhost:8050/")
+    print("  Official Portal: https://ziploot.app")
+    print("========================================================")
     print("")
 
     # Auto-detect Ollama
@@ -188,15 +188,14 @@ def run_server():
     except OSError as e:
         if "address already in use" in str(e).lower() or "10048" in str(e):
             print(f"  [ERROR] Port {PORT} is already in use!")
-            print(f"  Another instance may be running. Close it and try again.")
-            print(f"  Or check: netstat -an | findstr {PORT}")
+            print(f"  Close any existing instance or check: netstat -an | findstr {PORT}")
         else:
             print(f"  [ERROR] Could not start server: {e}")
         sys.stdout.flush()
         input("\n  Press Enter to exit...")
         sys.exit(1)
 
-    print(f"  [LIVE] Server running on http://localhost:{PORT}/")
+    print(f"  [LIVE] ZipLoot AI Engine active on http://localhost:{PORT}/")
     sys.stdout.flush()
 
     try:

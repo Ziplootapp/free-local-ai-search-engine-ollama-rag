@@ -2,10 +2,10 @@
 title ZipLoot AI Search Studio v2.0 - Auto-Installer
 color 0B
 echo.
-echo  ╔══════════════════════════════════════════════════════════╗
-echo  ║   ZipLoot AI Search Studio v2.0 - 1-Click Installer     ║
-echo  ║   https://ziploot.app                                    ║
-echo  ╚══════════════════════════════════════════════════════════╝
+echo ========================================================
+echo   ZipLoot AI Search Studio v2.0 - 1-Click Installer
+echo   Official Web App: https://ziploot.app
+echo ========================================================
 echo.
 
 :: ─── Step 0: Check Python ───────────────────────────────────
@@ -13,20 +13,20 @@ echo [0/4] Checking Python installation...
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
-    echo  ╔══════════════════════════════════════════════════════╗
-    echo  ║  [ERROR] Python is NOT installed on this system.     ║
-    echo  ║                                                      ║
-    echo  ║  Please download and install Python 3.8+ from:       ║
-    echo  ║  https://www.python.org/downloads/                   ║
-    echo  ║                                                      ║
-    echo  ║  IMPORTANT: Check "Add Python to PATH" during setup! ║
-    echo  ╚══════════════════════════════════════════════════════╝
+    echo ========================================================
+    echo  [ERROR] Python is NOT installed on this system.
     echo.
-    echo  Opening Python download page...
+    echo  Please download and install Python 3.8+ from:
+    echo  https://www.python.org/downloads/
+    echo.
+    echo  IMPORTANT: Check "Add Python to PATH" during setup!
+    echo ========================================================
+    echo.
+    echo Opening Python download page...
     start "" "https://www.python.org/downloads/"
     echo.
-    echo  After installing Python, close this window and
-    echo  double-click deploy_windows.bat again.
+    echo After installing Python, close this window and
+    echo double-click deploy_windows.bat again.
     echo.
     pause
     exit /b 1
@@ -75,11 +75,9 @@ echo [3/4] Checking for Ollama (optional local LLM)...
 where ollama >nul 2>&1
 if %errorlevel% equ 0 (
     echo  [OK] Ollama detected! Enhanced AI answers enabled.
-    echo  Tip: Run "ollama pull qwen2.5:7b" if you haven't already.
 ) else (
-    echo  [INFO] Ollama not found - using built-in Smart Synthesizer.
-    echo  [INFO] This is fine! Ollama is optional for enhanced AI answers.
-    echo  [INFO] Install later from: https://ollama.com/download
+    echo  [INFO] Ollama not found - using built-in ZipLoot Smart Synthesizer.
+    echo  [INFO] This is 100%% fine! ZipLoot works out-of-the-box without Ollama.
 )
 echo.
 
@@ -90,24 +88,24 @@ netstat -an 2>nul | findstr ":8050 " | findstr "LISTENING" >nul 2>&1
 if %errorlevel% equ 0 (
     echo.
     echo  [WARNING] Port 8050 is already in use!
-    echo  Another instance may be running. Close it first, or
-    echo  the server will fail to start.
+    echo  Another instance may be running. Close it first if needed.
     echo.
 )
 
 echo.
-echo  ╔══════════════════════════════════════════════════════════╗
-echo  ║  ZipLoot AI Search Studio is starting...                 ║
-echo  ║  Open your browser at: http://localhost:8050              ║
-echo  ║  Press Ctrl+C to stop the server.                        ║
-echo  ╚══════════════════════════════════════════════════════════╝
+echo ========================================================
+echo   ZipLoot AI Search Studio is starting...
+echo   Open your browser at: http://localhost:8050
+echo   Official Portal: https://ziploot.app
+echo   Press Ctrl+C in this window to stop the server.
+echo ========================================================
 echo.
 
-:: Open browser after 2 second delay (so server has time to start)
+:: Open browser after 2 second delay
 start /b cmd /c "timeout /t 2 /nobreak >nul & start "" http://localhost:8050"
 
 python server.py
 
 echo.
-echo  [INFO] Server stopped.
+echo [INFO] Server stopped.
 pause

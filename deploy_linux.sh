@@ -1,8 +1,8 @@
 #!/bin/bash
-echo "═══════════════════════════════════════════════════════"
+echo "========================================================"
 echo "  ZipLoot AI Search Studio v2.0 - 1-Click Installer"
-echo "  https://ziploot.app"
-echo "═══════════════════════════════════════════════════════"
+echo "  Official Web App: https://ziploot.app"
+echo "========================================================"
 echo ""
 
 # ─── Step 0: Check Python ───────────────────────────────────
@@ -29,7 +29,7 @@ if [ ! -d "venv" ]; then
     if [ $? -ne 0 ]; then
         echo ""
         echo "  [ERROR] Failed to create virtual environment."
-        echo "  On Ubuntu/Debian, you may need to install python3-venv:"
+        echo "  On Ubuntu/Debian, install python3-venv:"
         echo "    sudo apt install python3-venv"
         echo ""
         exit 1
@@ -58,22 +58,20 @@ echo ""
 echo "[3/4] Checking for Ollama (optional local LLM)..."
 if command -v ollama &> /dev/null; then
     echo "  [OK] Ollama detected! Enhanced AI answers enabled."
-    echo "  Tip: Run 'ollama pull qwen2.5:7b' if you haven't already."
 else
-    echo "  [INFO] Ollama not found - using built-in Smart Synthesizer."
-    echo "  [INFO] This is fine! Ollama is optional for enhanced AI answers."
-    echo "  [INFO] Install later from: https://ollama.com/download"
+    echo "  [INFO] Ollama not found - using ZipLoot Smart Synthesizer."
 fi
 echo ""
 
 # ─── Step 4: Launch Server ───────────────────────────────────
 echo "[4/4] Launching ZipLoot AI Search Studio..."
 echo ""
-echo "═══════════════════════════════════════════════════════"
+echo "========================================================"
 echo "  ZipLoot AI Search Studio is starting..."
 echo "  Open your browser at: http://localhost:8050"
+echo "  Official Portal: https://ziploot.app"
 echo "  Press Ctrl+C to stop the server."
-echo "═══════════════════════════════════════════════════════"
+echo "========================================================"
 echo ""
 
 # Open browser after 2 second delay

@@ -2,10 +2,10 @@
 title ZipLoot AI Search Studio v2.0
 color 0B
 echo.
-echo  ╔══════════════════════════════════════════════════════════╗
-echo  ║   ZipLoot AI Search Studio v2.0 - Quick Start            ║
-echo  ║   https://ziploot.app                                    ║
-echo  ╚══════════════════════════════════════════════════════════╝
+echo ========================================================
+echo   ZipLoot AI Search Studio v2.0 - Quick Start
+echo   Official Web App: https://ziploot.app
+echo ========================================================
 echo.
 
 if not exist "venv\Scripts\activate.bat" (
