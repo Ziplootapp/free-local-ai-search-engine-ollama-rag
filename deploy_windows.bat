@@ -77,7 +77,7 @@ echo  [OK] All dependencies installed.
 echo.
 
 REM --- Step 3: Setup Ollama Local AI Engine (MANDATORY) ---
-echo [3/4] Setting up Ollama Local AI Engine (Mandatory)...
+echo [3/4] Setting up Ollama Local AI Engine - Mandatory...
 
 where ollama >nul 2>&1
 if %errorlevel% equ 0 goto :OLLAMA_FOUND
@@ -88,7 +88,7 @@ if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
 )
 
 echo  [INFO] Downloading and installing Ollama for Windows...
-echo  [INFO] Downloading OllamaSetup.exe (Please wait)...
+echo  [INFO] Downloading OllamaSetup.exe - Please wait...
 
 powershell -Command "$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iwr -useb 'https://ollama.com/download/OllamaSetup.exe' -OutFile '$env:TEMP\OllamaSetup.exe'; Start-Process '$env:TEMP\OllamaSetup.exe' -ArgumentList '/silent' -Wait"
 
@@ -113,20 +113,29 @@ if %errorlevel% neq 0 (
 )
 echo  [OK] Ollama AI Daemon active on port 11434!
 
-echo  [INFO] Checking Ollama AI model (qwen2.5:1.5b)...
-if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
-    "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" list 2>nul | findstr /i "qwen llama deepseek" >nul 2>&1
-) else (
+echo  [INFO] Checking Ollama AI model qwen2.5:1.5b...
+where ollama >nul 2>&1
+if %errorlevel% equ 0 (
     ollama list 2>nul | findstr /i "qwen llama deepseek" >nul 2>&1
-)
-if %errorlevel% neq 0 (
-    echo  [INFO] Pulling fast lightweight Ollama AI model (qwen2.5:1.5b)...
+) else (
     if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
-        "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" pull qwen2.5:1.5b
-    ) else (
-        ollama pull qwen2.5:1.5b
+        "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" list 2>nul | findstr /i "qwen llama deepseek" >nul 2>&1
     )
 )
+
+if %errorlevel% equ 0 goto :MODEL_READY
+
+echo  [INFO] Pulling fast lightweight Ollama AI model qwen2.5:1.5b...
+where ollama >nul 2>&1
+if %errorlevel% equ 0 (
+    ollama pull qwen2.5:1.5b
+) else (
+    if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+        "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" pull qwen2.5:1.5b
+    )
+)
+
+:MODEL_READY
 echo  [OK] Ollama Local AI Engine ready!
 echo.
 
