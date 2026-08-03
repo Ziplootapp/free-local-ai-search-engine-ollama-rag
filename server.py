@@ -38,7 +38,6 @@ def check_ollama():
                 OLLAMA_AVAILABLE = True
                 preferred = [m for m in models if any(k in m.lower() for k in ['qwen', 'llama', 'deepseek', 'mistral', 'gemma'])]
                 if preferred:
-                    # Sort so larger models (7b, 8b, 14b, 3b) are selected BEFORE 0.5b
                     preferred.sort(key=lambda m: (
                         '0.5b' in m.lower(),
                         '1.5b' in m.lower(),
@@ -55,7 +54,7 @@ def check_ollama():
         OLLAMA_AVAILABLE = False
 
 def ollama_generate(query, search_results):
-    """Generate raw AI reasoning using local Ollama LLM with 60s timeout."""
+    """Generate raw AI reasoning using local Ollama LLM with chain-of-thought rule."""
     sources_text = ""
     for idx, r in enumerate(search_results[:4], 1):
         sources_text += f"Source [{idx}]: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}\n\n"
@@ -67,8 +66,8 @@ Verified Web Context:
 {sources_text}
 
 Rules:
-1. For MCQ/Quiz questions, state the exact correct option letter and text immediately.
-2. Provide concise step-by-step reasoning and explanation.
+1. First, calculate and reason step-by-step with 100% precision.
+2. At the very end of your answer, state the final conclusion clearly: "Therefore, the correct answer is Option [Letter]. [Text]".
 
 Answer:"""
 
@@ -89,7 +88,7 @@ Answer:"""
             data=payload,
             headers={'Content-Type': 'application/json'}
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read().decode('utf-8'))
             ai_text = data.get("response", "").strip()
             if ai_text:
@@ -122,7 +121,6 @@ class ZipLootServer(BaseHTTPRequestHandler):
 
                 search_results = fast_web_search(query)
 
-                # Always re-check Ollama status if not currently marked available
                 if not OLLAMA_AVAILABLE:
                     check_ollama()
 

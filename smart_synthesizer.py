@@ -40,7 +40,7 @@ def extract_explicit_snippet_val(snip_text):
     Parses explicit snippet answers like:
     'A. 14 years B. 22 years C. 20 years D. 18 years Answer: Option B' -> '22'
     'answer is 25' -> '25'
-    'becomes 0.30000000000000004' -> '0.30000000000000004'
+    'average speed is 40' -> '40'
     """
     snip_opts = dict(re.findall(r'([A-D])[\.\:\)]\s*(\$?\d+[\w\s\.]*?)(?=(?:\s+[A-D][\.\:\)]|$|\s*Answer))', snip_text, re.I))
     ans_match = re.search(r'Answer\s*:\s*(?:Option\s*)?([A-D])\b', snip_text, re.I)
@@ -50,33 +50,22 @@ def extract_explicit_snippet_val(snip_text):
             val = re.sub(r'[^\d.]', '', snip_opts[let])
             if val: return val
 
-    # Match floating point precision values in snippet (e.g. 0.30000000000000004)
     float_match = re.search(r'\b(0\.\d{4,})\b', snip_text)
     if float_match:
         return float_match.group(1).strip()
 
-    # Match verbs like becomes, equals, gives, returns, is, costs
-    sol_match = re.search(r'(?:becomes|equals|gives|returns|original price|answer|result|solution|value|speed|age)\s*(?:was|is|=|:|\b(?:is|equals|costs))\s*\$?(\d+(?:\.\d+)?)\b', snip_text, re.I)
+    sol_match = re.search(r'(?:average speed|original price|answer|result|solution|value|speed|age)\s*(?:was|is|=|:|\b(?:is|equals|costs))\s*\$?(\d+(?:\.\d+)?)\b', snip_text, re.I)
     if sol_match:
         return sol_match.group(1).strip()
 
     return None
 
 def parse_options(query):
-    """Accurately parse MCQ options (A, B, C, D) ignoring prices like $1.10 in question premise."""
+    """Accurately parse MCQ options (A, B, C, D) supporting spaces and units like 40 Mph or $0.05."""
     q_clean = re.sub(r'(?:show|hide)\s*hint.*', '', query, flags=re.I)
     q_clean = re.sub(r'(?:check|submit|view)\s*(?:answer|explanation).*', '', q_clean, flags=re.I).strip()
     
-    if '?' in q_clean:
-        parts = q_clean.split('?', 1)
-        opt_section = parts[1]
-    else:
-        opt_section = q_clean
-
-    options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.\~]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', opt_section, re.I)
-    if not options and '?' in q_clean:
-        options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.\~]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', q_clean, re.I)
-
+    options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*([^\r\n]+?)(?=(?:\s+[A-D][\.\)]|$))', q_clean, re.I)
     return [(let.upper(), text.strip()) for let, text in options]
 
 def extract_best_option(query, search_results, ollama_answer=None):
@@ -91,23 +80,23 @@ def extract_best_option(query, search_results, ollama_answer=None):
     if ollama_answer:
         text_l = ollama_answer.lower()
 
-        # A) Search from CONCLUSION at bottom for "thus/therefore correct answer is B"
-        bottom_match = re.search(r'(?:thus|therefore|so|hence|finally)?,?\s*the?\s*(?:correct|right)\s*(?:answer|option)\s*(?:is|=|:)?\s*\*?\*?\(?([A-D])[\)\.]?\b', text_l, re.I)
+        # A) Search from CONCLUSION at bottom for "thus/therefore correct answer is Option B"
+        bottom_match = re.search(r'(?:thus|therefore|so|hence|finally)?,?\s*the?\s*(?:correct|right)\s*(?:answer|option)\s*(?:is|=|:)?\s*\*?\*?\(?(?:option\s*)?([A-D])[\)\.]?\b', text_l, re.I)
         if bottom_match:
             matched_let = bottom_match.group(1).upper()
             for opt_letter, opt_text in options:
                 if opt_letter.upper() == matched_let:
                     return (opt_letter.upper(), opt_text.strip())
 
-        # B) Match direct "Correct Option: B" or "Option B is correct" or "Answer: C)"
-        direct_match = re.search(r'(?:correct|right)?\s*(?:option|answer)\s*(?:is|=|:)?\s*\*?\*?\(?([A-D])[\)\.]?\b', text_l, re.I)
+        # B) Match required "Correct Option: B" or "Option B is correct"
+        direct_match = re.search(r'\b(?:correct|right)\s+(?:option|answer)\s+(?:is|=|:)?\s*\*?\*?\(?(?:option\s*)?([A-D])[\)\.]?\b', text_l, re.I)
         if direct_match:
             matched_let = direct_match.group(1).upper()
             for opt_letter, opt_text in options:
                 if opt_letter.upper() == matched_let:
                     return (opt_letter.upper(), opt_text.strip())
 
-        # C) Check conclusion sentence at the end of Ollama's answer
+        # C) Check conclusion sentence at the end of Ollama's answer for calculated numeric value matching
         last_lines = [line for line in text_l.split('\n') if line.strip()]
         if last_lines:
             conclusion_text = ' '.join(last_lines[-3:])
