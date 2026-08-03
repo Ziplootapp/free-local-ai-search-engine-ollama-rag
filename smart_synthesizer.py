@@ -35,6 +35,36 @@ def clean_latex(text):
     text = re.sub(r'^(?:The\s+)?correct\s+(?:answer|option)\s*(?:is|=|:)?\s*\(?[A-D][\)\.]?\s*\$?\d+.*?\n+', '', text, flags=re.I)
     return text.strip()
 
+def evaluate_math_expression(query, options):
+    """
+    Evaluates math expressions like '999,999 × 999,999 to nearest million'
+    with 100% precision python execution to prevent LLM rounding hallucinations.
+    """
+    if not options: return None
+    q_clean = query.replace(',', '')
+    mult_match = re.search(r'(\d+(?:\.\d+)?)\s*[\*×x]\s*(\d+(?:\.\d+)?)', q_clean, re.I)
+    if mult_match:
+        try:
+            n1 = float(mult_match.group(1))
+            n2 = float(mult_match.group(2))
+            prod = n1 * n2
+
+            if 'nearest million' in q_clean.lower():
+                target_val = round(prod / 1_000_000.0) * 1_000_000
+            elif 'nearest thousand' in q_clean.lower():
+                target_val = round(prod / 1_000.0) * 1_000
+            else:
+                target_val = prod
+
+            for opt_letter, opt_text in options:
+                opt_num_str = re.sub(r'[^\d.]', '', opt_text)
+                if opt_num_str and float(opt_num_str) == float(target_val):
+                    return (opt_letter.upper(), opt_text.strip())
+        except Exception:
+            pass
+
+    return None
+
 def extract_explicit_snippet_val(snip_text):
     """
     Parses explicit snippet answers like:
@@ -73,6 +103,11 @@ def extract_best_option(query, search_results, ollama_answer=None):
     options = parse_options(query)
     if not options:
         return None
+
+    # 0. Check exact Python math verification first for arithmetic expressions
+    math_verified_opt = evaluate_math_expression(query, options)
+    if math_verified_opt:
+        return math_verified_opt
 
     q_premise_numbers = set(re.findall(r'\b\d+(?:\.\d+)?\b', query.split('?')[0] if '?' in query else query))
 
