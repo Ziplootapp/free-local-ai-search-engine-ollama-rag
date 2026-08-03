@@ -31,9 +31,9 @@ def clean_latex(text):
     if not text: return ""
     text = re.sub(r'\\\(|\\\)', '', text)
     text = re.sub(r'\\\[|\\\]', '', text)
-    # Remove leading duplicate "The correct answer is B) $25." lines from Ollama response
+    # Remove leading incorrect/conflicting option preamble lines if present
+    text = re.sub(r'^[A-D]\)\s*\d+.*?\n+This is incorrect.*?\n+', '', text, flags=re.I | re.M)
     text = re.sub(r'^(?:The\s+)?correct\s+(?:answer|option)\s*(?:is|=|:)?\s*\(?[A-D][\)\.]?\s*\$?\d+.*?\n+', '', text, flags=re.I)
-    text = re.sub(r'The correct answer is\s+[A-D]\)\s*\d+.*$', '', text, flags=re.I | re.M)
     return text.strip()
 
 def extract_explicit_snippet_val(snip_text):
@@ -41,7 +41,7 @@ def extract_explicit_snippet_val(snip_text):
     Parses explicit snippet answers like:
     'A. 14 years B. 22 years C. 20 years D. 18 years Answer: Option B' -> '22'
     'answer is 25' -> '25'
-    'original price was 25' -> '25'
+    '312211' -> '312211'
     """
     snip_opts = dict(re.findall(r'([A-D])[\.\:\)]\s*(\$?\d+[\w\s\.]*?)(?=(?:\s+[A-D][\.\:\)]|$|\s*Answer))', snip_text, re.I))
     ans_match = re.search(r'Answer\s*:\s*(?:Option\s*)?([A-D])\b', snip_text, re.I)
@@ -86,15 +86,23 @@ def extract_best_option(query, search_results, ollama_answer=None):
     if ollama_answer:
         text_l = ollama_answer.lower()
 
-        # A) Match direct option letter in Ollama text: "correct answer is B", "Option B", "Answer: B", "B)"
-        letter_match = re.search(r'(?:correct|right|final)?\s*(?:option|answer)\s*(?:is|=|:)?\s*\*?\*?\(?([A-D])[\)\.]?\b', text_l, re.I)
-        if letter_match:
-            matched_let = letter_match.group(1).upper()
+        # A) Search from CONCLUSION at bottom for "thus/therefore correct answer is B"
+        bottom_match = re.search(r'(?:thus|therefore|so|hence|finally)?,?\s*the?\s*(?:correct|right)\s*(?:answer|option)\s*(?:is|=|:)?\s*\*?\*?\(?([A-D])[\)\.]?\b', text_l, re.I)
+        if bottom_match:
+            matched_let = bottom_match.group(1).upper()
             for opt_letter, opt_text in options:
                 if opt_letter.upper() == matched_let:
                     return (opt_letter.upper(), opt_text.strip())
 
-        # B) Check the conclusion sentence at the end of Ollama's answer
+        # B) Match direct "Correct Option: B" or "Option B is correct"
+        direct_match = re.search(r'(?:correct|right)\s*(?:option|answer)\s*(?:is|=|:)?\s*\*?\*?\(?([A-D])[\)\.]?\b', text_l, re.I)
+        if direct_match:
+            matched_let = direct_match.group(1).upper()
+            for opt_letter, opt_text in options:
+                if opt_letter.upper() == matched_let:
+                    return (opt_letter.upper(), opt_text.strip())
+
+        # C) Check conclusion sentence at the end of Ollama's answer
         last_lines = [line for line in text_l.split('\n') if line.strip()]
         if last_lines:
             conclusion_text = ' '.join(last_lines[-3:])
@@ -102,12 +110,6 @@ def extract_best_option(query, search_results, ollama_answer=None):
                 opt_val = re.sub(r'[^\d.]', '', opt_text).strip()
                 if opt_val and opt_val not in q_premise_numbers and re.search(r'\b\$?' + re.escape(opt_val) + r'\b', conclusion_text):
                     return (opt_letter.upper(), opt_text.strip())
-
-        # C) Match exact option text in Ollama answer
-        for opt_letter, opt_text in options:
-            opt_clean = re.sub(r'(?:show|hide)\s*hint.*', '', opt_text, flags=re.I).strip().lower()
-            if len(opt_clean) >= 2 and re.search(r'\b' + re.escape(opt_clean) + r'\b', text_l):
-                return (opt_letter.upper(), opt_text.strip())
 
     # 2. Fallback to pattern matcher scoring
     explicit_vals = []
