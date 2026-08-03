@@ -51,9 +51,8 @@ def check_ollama():
                 print(f"  [OLLAMA] Active & Connected! Selected model: '{OLLAMA_MODEL}'")
             else:
                 print("  [OLLAMA] Service active on port 11434 (No models pulled yet).")
-                print("  [INFO] Tip: Run 'ollama pull qwen2.5:7b' to enable LLM Neural RAG.")
     except Exception:
-        print("  [OLLAMA] Not running - using ZipLoot Smart Synthesizer.")
+        OLLAMA_AVAILABLE = False
 
 def ollama_generate(query, search_results):
     """Generate raw AI reasoning using local Ollama LLM with 60s timeout."""
@@ -122,6 +121,10 @@ class ZipLootServer(BaseHTTPRequestHandler):
                     pass
 
                 search_results = fast_web_search(query)
+
+                # Always re-check Ollama status if not currently marked available
+                if not OLLAMA_AVAILABLE:
+                    check_ollama()
 
                 # Try Ollama first for LLM reasoning
                 raw_ollama_ans = None

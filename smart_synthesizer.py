@@ -39,12 +39,11 @@ def extract_explicit_snippet_val(snip_text):
     Parses explicit snippet answers like:
     'A. 14 years B. 22 years C. 20 years D. 18 years Answer: Option B' -> '22'
     'answer is 9' -> '9'
-    'result is 9' -> '9'
+    'ball costs 5c' -> '0.05'
     'x = 22' -> '22'
-    '1.00c' -> '1.00c'
     """
     # 1. Snippet internal option map & Answer: Option [X]
-    snip_opts = dict(re.findall(r'([A-D])[\.\:\)]\s*(\d+[\w\s]*?)(?=(?:\s+[A-D][\.\:\)]|$|\s*Answer))', snip_text, re.I))
+    snip_opts = dict(re.findall(r'([A-D])[\.\:\)]\s*(\$?\d+[\w\s\.]*?)(?=(?:\s+[A-D][\.\:\)]|$|\s*Answer))', snip_text, re.I))
     ans_match = re.search(r'Answer\s*:\s*(?:Option\s*)?([A-D])\b', snip_text, re.I)
     if ans_match and snip_opts:
         let = ans_match.group(1).upper()
@@ -52,41 +51,57 @@ def extract_explicit_snippet_val(snip_text):
             val = re.sub(r'[^\d.]', '', snip_opts[let])
             if val: return val
 
-    # 2. Match "answer is 9", "correct answer is 9", "result is 9", "value is 9", "ans = 9"
-    sol_match = re.search(r'(?:answer|result|solution|value|speed|age)\s*(?:is|=|:|\b(?:is|equals))\s*(\d+(?:\.\d+)?(?:\s*c)?)\b', snip_text, re.I)
+    # 2. Special currency & decimal cents matching (e.g. 5c -> 0.05, $0.05 -> 0.05)
+    cent_match = re.search(r'(?:ball|cost|answer|result)\s*(?:is|=|costs)?\s*(\d+)\s*c\b', snip_text, re.I)
+    if cent_match:
+        c_val = int(cent_match.group(1))
+        return f"0.0{c_val}" if c_val < 10 else f"0.{c_val}"
+
+    # 3. Match "answer is 9", "result is $0.05", "value is 9", "ans = 9"
+    sol_match = re.search(r'(?:answer|result|solution|value|speed|age|ball)\s*(?:is|=|:|\b(?:is|equals|costs))\s*\$?(\d+(?:\.\d+)?(?:\s*c)?)\b', snip_text, re.I)
     if sol_match:
         return sol_match.group(1).strip()
 
-    eq_match = re.search(r'(?:x|ans|answer|speed|age)\s*=\s*(\d+(?:\.\d+)?(?:\s*c)?)\b', snip_text, re.I)
-    if eq_match:
-        return eq_match.group(1).strip()
-
     return None
+
+def parse_options(query):
+    """Accurately parse MCQ options (A, B, C, D) ignoring prices like $1.10 in question premise."""
+    q_clean = re.sub(r'(?:show|hide)\s*hint.*', '', query, flags=re.I)
+    q_clean = re.sub(r'(?:check|submit|view)\s*(?:answer|explanation).*', '', q_clean, flags=re.I).strip()
+    
+    # Isolate options section (usually after '?' or near the end)
+    if '?' in q_clean:
+        parts = q_clean.split('?', 1)
+        opt_section = parts[1]
+    else:
+        opt_section = q_clean
+
+    # Match A) $0.10 B) $0.05 C) $1.00 D) $0.15 (ensuring option letter is A-D, not preceded by $ or digits)
+    options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', opt_section, re.I)
+    if not options and '?' in q_clean:
+        options = re.findall(r'(?:^|\s|\b)([A-D])[\.\)]\s*(\$?\d+(?:\.\d+)?|[A-Za-z0-9\$\%\-\+\/\,\.]{1,35}?)(?=(?:\s+[A-D][\.\)]|$))', q_clean, re.I)
+
+    return [(let.upper(), text.strip()) for let, text in options]
 
 def extract_best_option(query, search_results, ollama_answer=None):
     """Extract and select the correct option letter & text for MCQ queries."""
-    q_clean = re.sub(r'(?:show|hide)\s*hint.*', '', query, flags=re.I)
-    q_clean = re.sub(r'(?:check|submit|view)\s*(?:answer|explanation).*', '', q_clean, flags=re.I).strip()
-    q_clean = re.sub(r'([a-zA-Z0-9\?\)\}\}\]])([A-Da-d1-4][\.\)])', r'\1 \2', q_clean)
-    options = re.findall(r'([A-Da-d1-4])[\.\)]\s*([^\r\n]+?)(?=(?:\s+[A-Da-d1-4][\.\)]|$))', q_clean)
-
+    options = parse_options(query)
     if not options:
         return None
 
-    # Get numbers present inside the question premise (e.g. 6, 2, 1 in "6 ÷ 2(1 + 2)") to avoid matching question tokens
     q_premise_numbers = set(re.findall(r'\b\d+(?:\.\d+)?\b', query.split('?')[0] if '?' in query else query))
 
     # 1. Check if Ollama explicitly calculated a final value or specified an option letter
     if ollama_answer:
         text_l = ollama_answer.lower()
 
-        # Check calculated final numerical value from Ollama (e.g. "value is 9", "result is 9", "is 9")
-        calc_matches = re.findall(r'(?:answer|value|result|is|equals)\s*(?:is|=|:)?\s*\*?\*?(\d+(?:\.\d+)?)\*?\*?\b', text_l)
+        # Check calculated final numerical value from Ollama (e.g. "$0.05", "0.05", "5 cents")
+        calc_matches = re.findall(r'(?:answer|value|result|is|equals|costs)\s*(?:is|=|:)?\s*\*?\*?\$?(\d+(?:\.\d+)?)\*?\*?\b', text_l)
         if calc_matches:
             for calc_val in reversed(calc_matches):
                 for opt_letter, opt_text in options:
                     opt_val = re.sub(r'[^\d.]', '', opt_text).strip()
-                    if opt_val and opt_val == calc_val:
+                    if opt_val and (opt_val == calc_val or float(opt_val) == float(calc_val)):
                         return (opt_letter.upper(), opt_text.strip())
 
         # Check direct "Correct Option is: Option [X]" or "Option [X] is correct"
@@ -127,35 +142,16 @@ def extract_best_option(query, search_results, ollama_answer=None):
         score = 0.0
 
         opt_val = re.sub(r'[^\d.]', '', opt_clean_name)
-        is_pure_number = bool(re.match(r'^\d+(?:\.\d+)?$', opt_clean_name.strip()))
+        is_pure_number = bool(re.match(r'^\$?\d+(?:\.\d+)?$', opt_clean_name.strip()))
 
-        # If option is a pure number, only match verified solution values
-        if is_pure_number:
-            if opt_val and opt_val in explicit_vals:
-                score += 1000.0
-        else:
-            if opt_val and opt_val in explicit_vals:
-                score += 1000.0
+        if opt_val and (opt_val in explicit_vals or any(float(opt_val) == float(ev) for ev in explicit_vals if ev.replace('.', '').isdigit())):
+            score += 1000.0
 
-            if opt_val and len(opt_val) >= 1 and opt_val not in q_premise_numbers:
-                for r in search_results:
-                    snip_full = (r['title'] + ' ' + r['snippet'])
-                    is_premise = re.search(r'\b' + re.escape(opt_val) + r'\s*(?:years?\s+older|years?\s+younger|years?\s+ago|times|%)\b', snip_full, re.I)
-                    if not is_premise:
-                        if re.search(r'(?:x|ans|answer|age|speed)\s*=\s*' + re.escape(opt_val) + r'\b', snip_full, re.I):
-                            score += 500.0
-
+        if not is_pure_number:
             for tok in opt_toks:
                 if tok in idf:
                     len_weight = 2.5 if tok in ['quic', 'io', 'ai', 'db', 'ml', 'os', 'ip', 'ui', 'ux', 'udp', 'tcp', '1.00c', 'c'] else min(len(tok), 6) / 3.0
                     score += idf[tok] * len_weight
-
-            opt_words = [w for w in re.split(r'[\s\-\/]+', opt_clean_name.lower()) if len(w) >= 2]
-            combined_snips = ' '.join([r['title'] + ' ' + r['snippet'] for r in search_results]).lower()
-            for i in range(len(opt_words)-1):
-                bigram = f"{opt_words[i]} {opt_words[i+1]}"
-                if bigram in combined_snips:
-                    score += 15.0
 
         scores[(opt_letter_clean, opt_clean_name)] = score
 
