@@ -14,7 +14,7 @@ if hasattr(sys.stdout, 'reconfigure'):
         pass
 
 from fast_search import fast_web_search
-from smart_synthesizer import synthesize_response
+from smart_synthesizer import synthesize_response, parse_options
 
 PORT = 8050
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -54,20 +54,30 @@ def check_ollama():
         OLLAMA_AVAILABLE = False
 
 def ollama_generate(query, search_results):
-    """Generate raw AI reasoning using local Ollama LLM with 600 max tokens to avoid truncation."""
+    """Generate raw AI reasoning using local Ollama LLM with dynamic query intent rules."""
     sources_text = ""
     for idx, r in enumerate(search_results[:4], 1):
         sources_text += f"Source [{idx}]: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}\n\n"
 
+    is_mcq = bool(parse_options(query))
+
+    if is_mcq:
+        rules_prompt = """Rules:
+1. Calculate and reason step-by-step with 100% precision.
+2. At the very end of your answer, state the final conclusion clearly: "Therefore, the correct answer is Option [Letter]. [Text]"."""
+    else:
+        rules_prompt = """Rules:
+1. State the direct answer clearly in the first sentence.
+2. If the query asks about prices, plans, subscriptions, tiers, or comparisons, summarize the details using a clean Markdown Table (e.g. | Plan / Tier | Price | Key Features |).
+3. Provide concise, helpful bullet points for context."""
+
     prompt = f"""You are ZipLoot Universal AI Engine (Grounded RAG Engine).
-Synthesize a precise, direct, step-by-step accurate solution for: "{query}"
+Synthesize a precise, direct, accurate solution for: "{query}"
 
 Verified Web Context:
 {sources_text}
 
-Rules:
-1. Calculate and reason step-by-step with 100% precision.
-2. At the very end of your answer, state the final conclusion clearly: "Therefore, the correct answer is Option [Letter]. [Text]".
+{rules_prompt}
 
 Answer:"""
 
