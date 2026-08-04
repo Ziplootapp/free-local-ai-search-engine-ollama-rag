@@ -205,6 +205,17 @@ def generate_pricing_overview(query, search_results):
     """
     rows = []
     q_lower = query.lower()
+
+    # Collect all dollar prices found across ALL search results for intelligent query-level fallback
+    all_dollars = []
+    for r in search_results:
+        d_found = re.findall(r'(\$\d+(?:\.\d+)?)', r['title'] + ' ' + r['snippet'], re.I)
+        for d in d_found:
+            if d not in all_dollars:
+                all_dollars.append(d)
+
+    query_default_price = (", ".join(all_dollars[:2]) + "/mo") if all_dollars else ("$20/mo" if "chatgpt" in q_lower else "Free")
+
     for r in search_results[:4]:
         title = r['title'].strip()
         title_clean = re.sub(r'[:\|\-–\—].*', '', title).strip()
@@ -224,12 +235,10 @@ def generate_pricing_overview(query, search_results):
                     unique_prices.append(p_clean)
             price_str = ', '.join(unique_prices[:2]) + ("/mo" if not any("/mo" in p or "month" in p for p in unique_prices) else "")
         else:
-            if "plus" in q_lower or "chatgpt" in q_lower:
-                price_str = "$20/mo"
-            elif re.search(r'\bfree\b', full_text, re.I):
-                price_str = "free"
+            if re.search(r'\bfree\b', full_text, re.I) and not any(k in q_lower for k in ['price', 'cost', 'subscription']):
+                price_str = "Free"
             else:
-                price_str = "$20/mo"
+                price_str = query_default_price
 
         snip_excerpt = clean_snippet_excerpt(snip)
         rows.append(f"{title_clean} | {price_str} | {snip_excerpt}")
