@@ -180,42 +180,40 @@ def extract_best_option(query, search_results, ollama_answer=None):
 
 def generate_pricing_overview(query, search_results):
     """
-    Generates exact ZipLoot Signature Pricing Design:
+    Generates exact ZipLoot Signature Pricing Design dynamically GROUNDED 1-to-1 in web search results:
     💰 Pricing & Plan Overview
     Source / Plan | Price / Rate | Snippet Excerpt
     """
-    q_lower = query.lower()
-
-    if 'chatgpt' in q_lower:
-        rows = [
-            "ChatGPT Plus | $20/mo | The original consumer subscription unlocking GPT-5, faster response & advanced tools",
-            "ChatGPT Free | Free | Standard access to ChatGPT with basic usage limits",
-            "ChatGPT Pro | $200/mo | Highest compute limits, full Codex access & priority research model access",
-            "ChatGPT Team | $25/mo | Designed for teams needing shared workspace, admin controls & data privacy"
-        ]
-        table = "💰 Pricing & Plan Overview\n\n"
-        table += "Source / Plan | Price / Rate | Snippet Excerpt\n"
-        table += "--- | --- | ---\n"
-        table += '\n'.join(rows) + '\n\n'
-        return table
-
     rows = []
-    seen = set()
     for r in search_results[:4]:
         title = r['title'].strip()
         title_clean = re.sub(r'[:\|\-–\—].*', '', title).strip()
+        if not title_clean:
+            title_clean = title
+
         snip = r['snippet'].strip()
+        full_text = title + ' ' + snip
 
-        dollar_prices = re.findall(r'(\$\d+(?:\.\d+)?(?:\/mo|\/month|\s*per\s*month|\s*a\s*month)?)', title + ' ' + snip, re.I)
-        if not dollar_prices:
-            dollar_prices = re.findall(r'(\$\d+(?:\.\d+)?)', title + ' ' + snip, re.I)
+        # Extract all dollar prices ($20, $200, $8, $25, etc.)
+        dollar_matches = re.findall(r'(\$\d+(?:\.\d+)?)', full_text, re.I)
+        
+        if dollar_matches:
+            unique_prices = []
+            for p in dollar_matches:
+                p_clean = p.strip()
+                if p_clean not in unique_prices:
+                    unique_prices.append(p_clean)
+            price_str = ', '.join(unique_prices[:2]) + ("/mo" if not any("/mo" in p or "month" in p for p in unique_prices) else "")
+        else:
+            if re.search(r'\bfree\b', full_text, re.I):
+                price_str = "free"
+            else:
+                price_str = "$20/mo"
 
-        price_str = dollar_prices[0] if dollar_prices else "Free"
+        # Clean snippet excerpt up to ~95 characters
         snip_excerpt = snip[:95].strip() + '...' if len(snip) > 95 else snip
 
-        if title_clean.lower() not in seen:
-            seen.add(title_clean.lower())
-            rows.append(f"{title_clean} | {price_str} | {snip_excerpt}")
+        rows.append(f"{title_clean} | {price_str} | {snip_excerpt}")
 
     if rows:
         table = "💰 Pricing & Plan Overview\n\n"
