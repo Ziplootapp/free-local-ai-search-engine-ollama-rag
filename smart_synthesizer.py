@@ -34,12 +34,49 @@ def clean_latex(text):
     text = re.sub(r'^[A-D]\)\s*\d+.*?\n+This is incorrect.*?\n+', '', text, flags=re.I | re.M)
     return text.strip()
 
-def evaluate_math_expression(query, options):
+def solve_snail_well_problem(query, options):
     """
-    Evaluates math expressions like '999,999 × 999,999 to nearest million'
-    with 100% precision python execution to prevent LLM rounding hallucinations.
+    Solves classic snail well riddle:
+    'climbs U feet up ... slides/slips back D feet ... W-foot well'
+    Days = (W - U) / (U - D) + 1  (if W > U)
     """
     if not options: return None
+    q_clean = query.lower()
+
+    climb_m = re.search(r'(?:climbs?|crawls?|up)\s*(\d+(?:\.\d+)?)\s*(?:feet|ft|m|meters|steps)', q_clean)
+    slide_m = re.search(r'(?:slides?|slips?|back|down)\s*(\d+(?:\.\d+)?)\s*(?:feet|ft|m|meters|steps)', q_clean)
+    well_m = re.search(r'(\d+(?:\.\d+)?)\s*(?:-|foot|ft|m|meter)?\s*(?:foot|ft|m|meter)?\s*(?:well|deep|wall|pole|tree)', q_clean)
+
+    if climb_m and slide_m and well_m:
+        try:
+            climb = float(climb_m.group(1))
+            slide = float(slide_m.group(1))
+            well = float(well_m.group(1))
+
+            if climb > slide and well > climb:
+                net_per_day = climb - slide
+                days_needed = int(math.ceil((well - climb) / net_per_day) + 1)
+
+                for opt_letter, opt_text in options:
+                    opt_val = re.sub(r'[^\d.]', '', opt_text)
+                    if opt_val and int(float(opt_val)) == days_needed:
+                        return (opt_letter.upper(), opt_text.strip())
+        except Exception:
+            pass
+
+    return None
+
+def evaluate_math_expression(query, options):
+    """
+    Evaluates math expressions and riddles with 100% precision python execution to prevent LLM rounding hallucinations.
+    """
+    if not options: return None
+
+    # Check Snail Well Riddle
+    snail_opt = solve_snail_well_problem(query, options)
+    if snail_opt:
+        return snail_opt
+
     q_clean = query.replace(',', '')
     mult_match = re.search(r'(\d+(?:\.\d+)?)\s*[\*×x]\s*(\d+(?:\.\d+)?)', q_clean, re.I)
     if mult_match:
@@ -121,7 +158,7 @@ def extract_best_option(query, search_results, ollama_answer=None):
     if not options:
         return None
 
-    # 0. Check exact Python math verification first for arithmetic expressions
+    # 0. Check exact Python math verification first for arithmetic expressions & riddles
     math_verified_opt = evaluate_math_expression(query, options)
     if math_verified_opt:
         return math_verified_opt
