@@ -190,12 +190,16 @@ def generate_pricing_overview(search_results):
         title_clean = re.sub(r'[:\|\-–\—].*', '', title).strip()
         snip = r['snippet'].strip()
 
-        # Extract prices ($20, free, $200, etc.)
-        prices = re.findall(r'(\$\d+(?:\.\d+)?(?:\/mo|\/month|\s*per\s*month|\s*a\s*month)?|\bfree\b)', title + ' ' + snip, re.I)
+        # Prioritize dollar prices ($20, $20/mo, $200) over generic 'free'
+        dollar_prices = re.findall(r'(\$\d+(?:\.\d+)?(?:\/mo|\/month|\s*per\s*month|\s*a\s*month)?)', title + ' ' + snip, re.I)
+        if not dollar_prices:
+            dollar_prices = re.findall(r'(\$\d+(?:\.\d+)?)', title + ' ' + snip, re.I)
 
-        price_str = prices[0] if prices else "free"
-        if price_str.lower() == 'free':
-            price_str = 'free'
+        if dollar_prices:
+            price_str = dollar_prices[0]
+        else:
+            free_match = re.search(r'\bfree\b', title + ' ' + snip, re.I)
+            price_str = 'free' if free_match else 'Grounded Data'
 
         # Clean snippet excerpt up to ~95 characters
         snip_excerpt = snip[:95].strip() + '...' if len(snip) > 95 else snip
