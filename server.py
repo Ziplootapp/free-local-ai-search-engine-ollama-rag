@@ -14,7 +14,7 @@ if hasattr(sys.stdout, 'reconfigure'):
         pass
 
 from fast_search import fast_web_search
-from smart_synthesizer import synthesize_response, parse_options
+from smart_synthesizer import synthesize_response, parse_options, is_instant_python_query
 
 PORT = 8050
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -134,9 +134,12 @@ class ZipLootServer(BaseHTTPRequestHandler):
                 if not OLLAMA_AVAILABLE:
                     check_ollama()
 
-                # Try Ollama first for LLM reasoning
+                # Check if query is an instant Python query (exact math expression or live date/time)
+                is_instant = is_instant_python_query(query)
+
+                # Try Ollama for complex reasoning queries (bypassing for instant Python math/date queries)
                 raw_ollama_ans = None
-                if OLLAMA_AVAILABLE:
+                if OLLAMA_AVAILABLE and not is_instant:
                     raw_ollama_ans = ollama_generate(query, search_results)
 
                 # Combine Ollama reasoning + ZipLoot signature v7.0 UI structure
@@ -150,7 +153,7 @@ class ZipLootServer(BaseHTTPRequestHandler):
                 payload = {
                     "query": query,
                     "status": "success",
-                    "engine": f"ollama-rag ({OLLAMA_MODEL})" if raw_ollama_ans else "smart-synthesizer",
+                    "engine": f"instant-python" if is_instant else (f"ollama-rag ({OLLAMA_MODEL})" if raw_ollama_ans else "smart-synthesizer"),
                     "sources": search_results,
                     "answer": ai_answer
                 }

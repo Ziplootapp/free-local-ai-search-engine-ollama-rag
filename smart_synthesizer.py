@@ -64,6 +64,24 @@ def evaluate_math_expression(query, options):
 
     return None
 
+def is_instant_python_query(query):
+    """
+    Returns True if the query can be computed instantly by Python
+    (e.g., exact math expressions with options/arithmetic or live date/time queries).
+    """
+    q_lower = query.lower().strip()
+    
+    # 1. Live Date / Time query
+    if re.search(r'\b(?:what date|current date|today date|current time|what time|local time|system time|live clock)\b', q_lower):
+        return True
+
+    # 2. Math arithmetic expression query solvable by Python
+    options = parse_options(query)
+    if options and evaluate_math_expression(query, options):
+        return True
+
+    return False
+
 def extract_explicit_snippet_val(snip_text):
     """
     Parses explicit snippet answers like:
