@@ -178,6 +178,39 @@ def extract_best_option(query, search_results, ollama_answer=None):
     best_entry = max(scores.items(), key=lambda x: x[1]) if scores else None
     return best_entry[0] if best_entry else None
 
+def generate_pricing_overview(search_results):
+    """
+    Generates exact ZipLoot Signature Pricing Design:
+    💰 Pricing & Plan Overview
+    Source / Plan | Price / Rate | Snippet Excerpt
+    """
+    rows = []
+    for r in search_results[:4]:
+        title = r['title'].strip()
+        title_clean = re.sub(r'[:\|\-–\—].*', '', title).strip()
+        snip = r['snippet'].strip()
+
+        # Extract prices ($20, free, $200, etc.)
+        prices = re.findall(r'(\$\d+(?:\.\d+)?(?:\/mo|\/month|\s*per\s*month|\s*a\s*month)?|\bfree\b)', title + ' ' + snip, re.I)
+
+        price_str = prices[0] if prices else "free"
+        if price_str.lower() == 'free':
+            price_str = 'free'
+
+        # Clean snippet excerpt up to ~95 characters
+        snip_excerpt = snip[:95].strip() + '...' if len(snip) > 95 else snip
+
+        rows.append(f"{title_clean} | {price_str} | {snip_excerpt}")
+
+    if rows:
+        table = "💰 Pricing & Plan Overview\n\n"
+        table += "Source / Plan | Price / Rate | Snippet Excerpt\n"
+        table += "--- | --- | ---\n"
+        table += '\n'.join(rows) + '\n\n'
+        return table
+
+    return ""
+
 
 def synthesize_response(query, search_results, ollama_answer=None, model_name=None):
     q_lower = query.lower().strip()
@@ -190,21 +223,25 @@ def synthesize_response(query, search_results, ollama_answer=None, model_name=No
 
     ans = f'## ⚡ ZipLoot Neural AI Search Report: {query.title()}\n\n'
 
-    # --- 2. Direct Answer Section ---
-    ans += '### 🎯 Verified Direct Answer\n\n'
-
     best_opt = extract_best_option(query, search_results, ollama_answer)
-    if best_opt:
-        ans += f'**The Correct Option is:** **Option {best_opt[0]}. {best_opt[1]}**\n\n'
+    is_pricing_query = any(k in q_lower for k in ['price', 'cost', 'pricing', 'subscription', 'plans', 'tier', 'per month', 'how much'])
 
-    if ollama_answer:
-        clean_ollama = clean_latex(ollama_answer)
-        if best_opt:
-            ans += f'**Explanation & Step-by-Step Reasoning:**\n\n{clean_ollama}\n\n'
-        else:
-            ans += clean_ollama + '\n\n'
+    # --- 2. Pricing & Plan Overview Design ---
+    if is_pricing_query and not best_opt:
+        ans += generate_pricing_overview(search_results)
     else:
-        ans += '**Direct Answer:** Solution synthesized from verified web search sources.\n\n'
+        ans += '### 🎯 Verified Direct Answer\n\n'
+        if best_opt:
+            ans += f'**The Correct Option is:** **Option {best_opt[0]}. {best_opt[1]}**\n\n'
+
+        if ollama_answer:
+            clean_ollama = clean_latex(ollama_answer)
+            if best_opt:
+                ans += f'**Explanation & Step-by-Step Reasoning:**\n\n{clean_ollama}\n\n'
+            else:
+                ans += clean_ollama + '\n\n'
+        elif not best_opt:
+            ans += '**Direct Answer:** Solution synthesized from verified web search sources.\n\n'
 
     # --- Convert all inline [1], [2], [3], [4] and Source [1] citation tags into direct clickable links ---
     for i, r in enumerate(search_results[:4], 1):
