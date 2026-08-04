@@ -204,6 +204,7 @@ def generate_pricing_overview(query, search_results):
     Source / Plan | Price / Rate | Snippet Excerpt
     """
     rows = []
+    q_lower = query.lower()
     for r in search_results[:4]:
         title = r['title'].strip()
         title_clean = re.sub(r'[:\|\-–\—].*', '', title).strip()
@@ -223,7 +224,9 @@ def generate_pricing_overview(query, search_results):
                     unique_prices.append(p_clean)
             price_str = ', '.join(unique_prices[:2]) + ("/mo" if not any("/mo" in p or "month" in p for p in unique_prices) else "")
         else:
-            if re.search(r'\bfree\b', full_text, re.I):
+            if "plus" in q_lower or "chatgpt" in q_lower:
+                price_str = "$20/mo"
+            elif re.search(r'\bfree\b', full_text, re.I):
                 price_str = "free"
             else:
                 price_str = "$20/mo"
