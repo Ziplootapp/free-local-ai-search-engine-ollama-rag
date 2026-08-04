@@ -54,7 +54,7 @@ def check_ollama():
         OLLAMA_AVAILABLE = False
 
 def ollama_generate(query, search_results):
-    """Generate raw AI reasoning using local Ollama LLM with dynamic query intent rules."""
+    """Generate raw AI reasoning using local Ollama LLM with ZipLoot signature format rules."""
     sources_text = ""
     for idx, r in enumerate(search_results[:4], 1):
         sources_text += f"Source [{idx}]: {r['title']}\nURL: {r['url']}\nSnippet: {r['snippet']}\n\n"
@@ -67,9 +67,9 @@ def ollama_generate(query, search_results):
 2. At the very end of your answer, state the final conclusion clearly: "Therefore, the correct answer is Option [Letter]. [Text]"."""
     else:
         rules_prompt = """Rules:
-1. State the direct answer clearly in the first sentence.
-2. If the query asks about prices, plans, subscriptions, tiers, or comparisons, summarize the details using a clean Markdown Table (e.g. | Plan / Tier | Price | Key Features |).
-3. Provide concise, helpful bullet points for context."""
+1. State the direct answer clearly and concisely in clean natural language paragraphs.
+2. Provide concise, helpful bullet points for key details.
+3. Do NOT mention option letters like Option A or Option B unless options A/B/C/D were in the question."""
 
     prompt = f"""You are ZipLoot Universal AI Engine (Grounded RAG Engine).
 Synthesize a precise, direct, accurate solution for: "{query}"

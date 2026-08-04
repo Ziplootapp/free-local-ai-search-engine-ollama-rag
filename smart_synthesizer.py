@@ -32,8 +32,6 @@ def clean_latex(text):
     text = re.sub(r'\\\(|\\\)', '', text)
     text = re.sub(r'\\\[|\\\]', '', text)
     text = re.sub(r'^[A-D]\)\s*\d+.*?\n+This is incorrect.*?\n+', '', text, flags=re.I | re.M)
-    # Prevent KaTeX from hiding pricing dollar signs $20
-    text = re.sub(r'(?<!\\)\$(\d+)', r'\\$\1', text)
     return text.strip()
 
 def evaluate_math_expression(query, options):
@@ -180,28 +178,6 @@ def extract_best_option(query, search_results, ollama_answer=None):
     best_entry = max(scores.items(), key=lambda x: x[1]) if scores else None
     return best_entry[0] if best_entry else None
 
-def generate_pricing_table(search_results):
-    """Extract pricing tiers from web search results and render a Markdown table."""
-    combined_text = ' '.join([r['title'] + ' ' + r['snippet'] for r in search_results])
-    
-    tier_matches = re.findall(r'([A-Za-z0-9\+\s]{2,15}?)\s*(?:tier|plan)?\s*(?:at|costs|=|:)?\s*(\$\d+(?:\/mo|\/month|\s*per\s*month)?)', combined_text, re.I)
-    
-    rows = []
-    seen = set()
-    for name, price in tier_matches:
-        n_clean = name.strip().title()
-        p_clean = price.strip()
-        if n_clean and p_clean and n_clean.lower() not in seen and len(n_clean) < 25:
-            seen.add(n_clean.lower())
-            rows.append(f"| **{n_clean}** | **\\{p_clean}** | Grounded Web Data |")
-
-    if rows:
-        table = "| Plan / Tier | Price | Source Verified |\n| :--- | :--- | :--- |\n"
-        table += '\n'.join(rows[:4]) + '\n\n'
-        return table
-
-    return ""
-
 
 def synthesize_response(query, search_results, ollama_answer=None, model_name=None):
     q_lower = query.lower().strip()
@@ -227,16 +203,8 @@ def synthesize_response(query, search_results, ollama_answer=None, model_name=No
             ans += f'**Explanation & Step-by-Step Reasoning:**\n\n{clean_ollama}\n\n'
         else:
             ans += clean_ollama + '\n\n'
-    elif not best_opt:
-        is_pricing_query = any(k in q_lower for k in ['price', 'cost', 'pricing', 'subscription', 'plans', 'tier', 'per month'])
-        if is_pricing_query:
-            p_table = generate_pricing_table(search_results)
-            if p_table:
-                ans += p_table
-            else:
-                ans += '**Direct Answer:** Solution synthesized from verified web search sources.\n\n'
-        else:
-            ans += '**Direct Answer:** Solution synthesized from verified web search sources.\n\n'
+    else:
+        ans += '**Direct Answer:** Solution synthesized from verified web search sources.\n\n'
 
     # --- Convert all inline [1], [2], [3], [4] and Source [1] citation tags into direct clickable links ---
     for i, r in enumerate(search_results[:4], 1):
